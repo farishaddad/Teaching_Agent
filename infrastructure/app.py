@@ -1,5 +1,9 @@
 """CDK App — Teaching Agent Infrastructure."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import aws_cdk as cdk
 
 from infrastructure.auth_stack import TeachingAgentAuthStack

@@ -138,25 +138,6 @@ class TeachingAgentAuthStack(Stack):
             enable_token_revocation=True,
             # Prevent user existence errors leaking in auth responses
             prevent_user_existence_errors=True,
-            # Read & write access to custom attributes
-            read_attributes=cognito.ClientAttributes()
-            .with_standard_attributes(
-                cognito.StandardAttributesMask(
-                    email=True,
-                    given_name=True,
-                    family_name=True,
-                    email_verified=True,
-                )
-            )
-            .with_custom_attributes("cohort", "enrollment_date"),
-            write_attributes=cognito.ClientAttributes()
-            .with_standard_attributes(
-                cognito.StandardAttributesMask(
-                    given_name=True,
-                    family_name=True,
-                )
-            )
-            .with_custom_attributes("cohort", "enrollment_date"),
         )
 
         # ── Hosted UI Domain ──────────────────────────────────────────────────

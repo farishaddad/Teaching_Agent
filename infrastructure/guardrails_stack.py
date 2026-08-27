@@ -134,7 +134,7 @@ class TeachingAgentGuardrailsStack(Stack):
                     bedrock.CfnGuardrail.WordConfigProperty(text="reveal your prompt"),
                 ],
                 managed_word_lists_config=[
-                    bedrock.CfnGuardrail.ManagedWordListConfigProperty(type="PROFANITY"),
+                    bedrock.CfnGuardrail.ManagedWordsConfigProperty(type="PROFANITY"),
                 ],
             ),
             # ─── Contextual Grounding Policy ─────────────────────────

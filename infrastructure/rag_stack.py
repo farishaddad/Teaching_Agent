@@ -143,7 +143,7 @@ class TeachingAgentRAGStack(Stack):
                                 "ResourceType": "dashboard",
                             },
                         ],
-                        "AllowFromPublic": False,
+                        "AllowFromPublic": True,
                     }
                 ]
             ),

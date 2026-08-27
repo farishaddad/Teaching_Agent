@@ -1,1 +1,1 @@
-"""CDK infrastructure stacks for the Teaching Agent."""
+"""Teaching Agent CDK infrastructure stacks."""
