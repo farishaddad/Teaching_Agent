@@ -13,7 +13,7 @@ from typing import Optional
 
 import httpx
 import structlog
-from fastapi import Cookie, Depends, Header, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from jwt import PyJWKClient, PyJWKClientError
 import jwt as pyjwt
 
