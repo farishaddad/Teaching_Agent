@@ -22,7 +22,7 @@ env = cdk.Environment(
 # Stack 1: Authentication (Cognito)
 auth_stack = TeachingAgentAuthStack(app, "TeachingAgentAuth", env=env)
 
-# Stack 2: RAG (Knowledge Base + S3 + OpenSearch Serverless)
+# Stack 2: RAG (S3 bucket for course materials — KB created via console)
 rag_stack = TeachingAgentRAGStack(app, "TeachingAgentRAG", env=env)
 
 # Stack 3: Guardrails (Bedrock Guardrail)
@@ -37,7 +37,7 @@ api_stack = TeachingAgentAPIStack(
     "TeachingAgentAPI",
     env=env,
     user_pool=auth_stack.user_pool,
-    knowledge_base_id=rag_stack.knowledge_base_id,
+    knowledge_base_id="PLACEHOLDER_SET_AFTER_KB_CREATION",
     guardrail_id=guardrails_stack.guardrail_id,
     tracking_table=tracking_stack.table,
 )

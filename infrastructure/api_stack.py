@@ -1,16 +1,57 @@
-"""CDK Stack: Lambda + API Gateway for the Teaching Agent API."""
+"""CDK Stack: Lambda + API Gateway for the Teaching Agent API.
+
+Uses local bundling (no Docker) — pip installs deps into asset output.
+"""
 
 from aws_cdk import (
     Stack,
     Duration,
     CfnOutput,
+    BundlingOptions,
+    DockerImage,
+    ILocalBundling,
     aws_lambda as _lambda,
     aws_apigateway as apigw,
-    aws_cognito as cognito,
-    aws_dynamodb as dynamodb,
     aws_iam as iam,
 )
 from constructs import Construct
+import jsii
+
+
+@jsii.implements(ILocalBundling)
+class LocalPipBundling:
+    """Bundle Lambda code locally by running pip install + copying source."""
+
+    def try_bundle(self, output_dir: str, *, image=None, **kwargs) -> bool:
+        import os
+        import subprocess
+        import shutil
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # Install pip dependencies
+        subprocess.check_call([
+            "pip", "install", "-r",
+            os.path.join(project_root, "requirements.txt"),
+            "-t", output_dir,
+            "--quiet",
+        ])
+
+        # Copy backend source
+        shutil.copytree(
+            os.path.join(project_root, "backend"),
+            os.path.join(output_dir, "backend"),
+            dirs_exist_ok=True,
+        )
+
+        # Copy tutorial content
+        shutil.copytree(
+            os.path.join(project_root, "tutorial"),
+            os.path.join(output_dir, "tutorial"),
+            dirs_exist_ok=True,
+        )
+
+        return True
 
 
 class TeachingAgentAPIStack(Stack):
@@ -37,6 +78,10 @@ class TeachingAgentAPIStack(Stack):
             handler="backend.main.handler",
             code=_lambda.Code.from_asset(
                 ".",
+                bundling=BundlingOptions(
+                    image=DockerImage.from_registry("dummy"),  # Won't be used
+                    local=LocalPipBundling(),
+                ),
                 exclude=[
                     "node_modules",
                     ".venv",
@@ -47,6 +92,9 @@ class TeachingAgentAPIStack(Stack):
                     "tests",
                     "__pycache__",
                     "*.pyc",
+                    "infrastructure",
+                    ".kiro",
+                    "course_materials",
                 ],
             ),
             memory_size=1024,
@@ -79,7 +127,7 @@ class TeachingAgentAPIStack(Stack):
             )
         )
 
-        # Cognito admin permissions (for student management)
+        # Cognito admin permissions
         self.api_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=[
@@ -103,7 +151,7 @@ class TeachingAgentAPIStack(Stack):
             "TeachingAgentAPI",
             rest_api_name="teaching-agent-api",
             handler=self.api_lambda,
-            proxy=True,  # Forward all requests to Lambda
+            proxy=True,
             deploy_options=apigw.StageOptions(stage_name="prod"),
         )
 
