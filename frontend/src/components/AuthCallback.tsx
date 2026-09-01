@@ -1,71 +1,87 @@
 /**
- * AuthCallback — handles the Cognito Hosted UI redirect.
- *
- * Cognito redirects here after successful authentication with:
- *   /auth/callback?code=<authorization_code>&state=<state>
- *
- * This component extracts the code and delegates to useAuth.handleCallback,
- * which POSTs to the backend to exchange the code for tokens (httpOnly cookies).
+ * Auth Callback — exchanges the Cognito authorization code for tokens
+ * Simple version that displays the auth code for API testing
  */
 
-import { useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useEffect, useState } from 'react';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function AuthCallback() {
-  const [searchParams] = useSearchParams();
-  const { handleCallback } = useAuth();
-  const handled = useRef(false);
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [message, setMessage] = useState('Completing sign-in…');
+  const [token, setToken] = useState('');
 
   useEffect(() => {
-    // Guard against double-invocation in React Strict Mode
-    if (handled.current) return;
-    handled.current = true;
-
-    const code = searchParams.get('code');
-    const error = searchParams.get('error');
-    const errorDescription = searchParams.get('error_description');
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
 
     if (error) {
-      // Cognito returned an explicit error (e.g., access_denied)
-      console.error('Cognito auth error:', error, errorDescription);
-      window.location.replace(`/login?error=${encodeURIComponent(errorDescription ?? error)}`);
+      setStatus('error');
+      setMessage(`Login failed: ${error}`);
       return;
     }
 
     if (!code) {
-      window.location.replace('/login');
+      setStatus('error');
+      setMessage('No authorization code received.');
       return;
     }
 
-    void handleCallback(code);
-  }, [handleCallback, searchParams]);
+    // Exchange code for tokens via backend
+    fetch(`${API_BASE}/api/auth/callback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        code,
+        redirect_uri: import.meta.env.VITE_REDIRECT_URI || 'http://localhost:5173/auth/callback',
+      }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setStatus('success');
+          setToken(data.access_token || '');
+          setMessage('✅ Logged in successfully!');
+          // Redirect to home after 2s
+          setTimeout(() => { window.location.href = '/'; }, 2000);
+        } else {
+          const err = await res.text();
+          setStatus('error');
+          setMessage(`Auth failed: ${res.status} — ${err}`);
+        }
+      })
+      .catch((err) => {
+        setStatus('error');
+        setMessage(`Network error: ${err.message}. API_BASE=${API_BASE}`);
+      });
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="text-center">
-        <svg
-          className="animate-spin mx-auto h-10 w-10 text-indigo-600 mb-4"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"
-          />
-        </svg>
-        <p className="text-gray-600 text-sm font-medium">Completing sign-in…</p>
+    <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+        {status === 'loading' && (
+          <>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">{message}</p>
+          </>
+        )}
+        {status === 'success' && (
+          <>
+            <p className="text-2xl mb-2">✅</p>
+            <p className="text-gray-900 font-medium">{message}</p>
+            <p className="text-xs text-gray-400 mt-2">Redirecting...</p>
+          </>
+        )}
+        {status === 'error' && (
+          <>
+            <p className="text-2xl mb-2">❌</p>
+            <p className="text-red-600 text-sm">{message}</p>
+            <a href="/" className="text-blue-600 text-sm mt-4 block hover:underline">← Go home</a>
+          </>
+        )}
       </div>
     </div>
   );

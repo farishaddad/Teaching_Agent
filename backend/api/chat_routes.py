@@ -81,7 +81,8 @@ async def chat(
             query=body.message,
             response=result["answer"],
             sources=[s.source for s in sources],
-            tokens_used=tokens.total,
+            tokens_input=tokens.input,
+            tokens_output=tokens.output,
             guardrail_triggered=result.get("guardrail_triggered", False),
             violation_type=result.get("violation_type"),
         )
@@ -169,7 +170,8 @@ async def chat_stream(
                 query=body.message,
                 response=full_answer,
                 sources=[s.get("source", "") for s in sources_sent],
-                tokens_used=tokens_total,
+                tokens_input=tokens_total // 2,
+                tokens_output=tokens_total // 2,
                 guardrail_triggered=guardrail_hit,
             )
 

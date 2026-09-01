@@ -7,8 +7,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://65nvz27oze.execute-api.eu-west-2.amazonaws.com/prod',
         changeOrigin: true,
+        secure: true,
       },
     },
   },

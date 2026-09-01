@@ -27,11 +27,8 @@ from backend.rag.prompt_templates import (
 logger = structlog.get_logger()
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-KNOWLEDGE_BASE_ID: str = os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID", "")
-MODEL_ARN: str = os.environ.get(
-    "BEDROCK_MODEL_ARN",
-    "arn:aws:bedrock:eu-west-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
-)
+KNOWLEDGE_BASE_ID: str = os.environ.get("BEDROCK_KB_ID", "") or os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID", "")
+MODEL_ARN: str = os.environ.get("BEDROCK_MODEL_ARN", "arn:aws:bedrock:eu-west-2::foundation-model/anthropic.claude-3-haiku-20240307-v1:0")
 BEDROCK_REGION: str = os.environ.get("BEDROCK_REGION", "eu-west-2")
 GUARDRAIL_ID: str = os.environ.get("BEDROCK_GUARDRAIL_ID", "")
 GUARDRAIL_VERSION: str = os.environ.get("BEDROCK_GUARDRAIL_VERSION", "DRAFT")
@@ -122,7 +119,7 @@ def retrieve_and_generate(
             },
         },
         "retrievalConfiguration": {
-            "vectorSearchConfiguration": {
+            "managedSearchConfiguration": {
                 "numberOfResults": _NUM_RESULTS,
             }
         },
@@ -212,11 +209,7 @@ def retrieve(
         response = _get_agent_runtime().retrieve(
             knowledgeBaseId=KNOWLEDGE_BASE_ID,
             retrievalQuery={"text": query},
-            retrievalConfiguration={
-                "vectorSearchConfiguration": {
-                    "numberOfResults": _NUM_RESULTS,
-                }
-            },
+            # No retrievalConfiguration — Managed KB uses its own defaults
         )
     except (ClientError, BotoCoreError) as exc:
         log.error("bedrock_retrieve_error", error=str(exc))

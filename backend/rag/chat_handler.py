@@ -33,6 +33,7 @@ from backend.rag.knowledge_base import (
     MODEL_ARN,
     build_converse_messages,
     retrieve,
+    retrieve_and_generate,
 )
 from backend.rag.prompt_templates import (
     CONVERSE_SYSTEM_PROMPT,
@@ -120,122 +121,74 @@ async def handle_chat(
     student_id: str,
     session_id: Optional[str] = None,
 ) -> dict:
-    """Handle a single chat turn synchronously.
-
-    Flow:
-    1. Resolve or create session.
-    2. Retrieve relevant chunks from Bedrock KB.
-    3. Build Converse API messages with history + context.
-    4. Call Converse API with guardrails.
-    5. Detect guardrail interventions and empty answers.
-    6. Update session history.
-    7. Return response dict.
-
-    Args:
-        query: Student's question.
-        student_id: Cognito sub for logging.
-        session_id: Existing session ID, or None to create a new one.
-
-    Returns:
-        Dict with:
-          - ``answer``: Response text
-          - ``sources``: List of citation dicts
-          - ``session_id``: Session ID (new or existing)
-          - ``tokens_used``: Dict with input/output/total counts
-          - ``guardrail_triggered``: bool
-          - ``violation_type``: str or None
-    """
+    """Handle a single chat turn: Retrieve from Managed KB + Converse for generation."""
     log = logger.bind(student_id=student_id, query_preview=query[:80])
 
-    # Resolve session
     if not session_id:
         session_id = str(uuid.uuid4())
         log.info("chat_new_session", session_id=session_id)
-    session = _get_session(session_id)
-    is_first_turn = session["turn_count"] == 0
 
-    # Step 1: Retrieve relevant chunks (run in thread pool — sync boto3 call)
-    chunks = await asyncio.get_event_loop().run_in_executor(
-        None, retrieve, query, student_id
-    )
+    log.info("rag_retrieve_start")
 
-    # Step 2: Build messages list
-    messages = build_converse_messages(
-        query=query,
-        retrieved_chunks=chunks,
-        conversation_history=session["history"],
-        include_few_shots=is_first_turn,
-    )
-
-    # Step 3: Call Converse API with guardrails (in thread pool)
     try:
-        raw_response = await asyncio.get_event_loop().run_in_executor(
-            None,
-            _call_converse,
-            messages,
-            student_id,
-        )
-    except (ClientError, BotoCoreError) as exc:
-        log.error("converse_api_error", error=str(exc))
-        return _build_result(
-            answer="I'm having trouble connecting to the AI service. Please try again in a moment.",
-            sources=[],
-            session_id=session_id,
-            tokens_used=_zero_tokens(),
-            guardrail_triggered=False,
+        # Step 1: Retrieve from Managed KB (no retrievalConfiguration needed)
+        chunks = await asyncio.get_event_loop().run_in_executor(
+            None, retrieve, query, student_id
         )
 
-    # Step 4: Handle guardrail intervention
-    if raw_response.get("stopReason") == "guardrail_intervened":
-        trace = raw_response.get("trace", {}).get("guardrail", {})
-        violation_type = _extract_violation_type(trace)
-        log.warning(
-            "guardrail_triggered",
-            violation_type=violation_type,
-            session_id=session_id,
-        )
-        return _build_result(
-            answer=POLICY.denial_message,
-            sources=[],
-            session_id=session_id,
-            tokens_used=_zero_tokens(),
-            guardrail_triggered=True,
-            violation_type=violation_type,
+        # Step 2: Build prompt with retrieved context
+        if chunks:
+            context = "\n\n".join([f"[Source: {c.get('source','unknown')}]\n{c.get('text','')}" for c in chunks[:5]])
+            user_message = f"Using the following course materials:\n\n{context}\n\nStudent question: {query}"
+        else:
+            user_message = f"Student question: {query}\n\nNote: No specific course material was found for this question."
+
+        messages = [{"role": "user", "content": [{"text": user_message}]}]
+        system = [{"text": "You are an expert teaching assistant for an Agentic AI course. Answer questions grounded in the provided course materials. If materials are insufficient, say so honestly."}]
+
+        # Step 3: Generate with Converse API (EU cross-region inference profile)
+        raw = await asyncio.get_event_loop().run_in_executor(
+            None, _call_converse, messages, student_id
         )
 
-    # Step 5: Extract answer text
-    answer = _extract_answer(raw_response)
-    if not answer:
-        answer = FALLBACK_RESPONSE
+        stop_reason = raw.get("stopReason", "")
+        if stop_reason == "guardrail_intervened":
+            return {
+                "answer": POLICY.denial_message,
+                "sources": [c.get("source","") for c in chunks],
+                "session_id": session_id,
+                "tokens_used": {"input": 0, "output": 0, "total": 0},
+                "guardrail_triggered": True,
+                "violation_type": "guardrail_intervened",
+            }
 
-    # Step 6: Extract token usage
-    tokens = _extract_token_usage(raw_response)
+        content_blocks = raw.get("output", {}).get("message", {}).get("content", [])
+        answer = next((b["text"] for b in content_blocks if "text" in b), "")
+        usage = raw.get("usage", {})
 
-    # Step 7: Derive citations from the chunks used
-    sources = [
-        {"source": c["source"], "excerpt": c["text"][:200]}
-        for c in chunks
-        if c.get("score", 0) > 0.4  # Only cite reasonably relevant chunks
-    ]
+        return {
+            "answer": answer or FALLBACK_RESPONSE,
+            "sources": [{"source": c.get("source",""), "excerpt": c.get("text","")[:200]} for c in chunks[:3]],
+            "session_id": session_id,
+            "tokens_used": {
+                "input": usage.get("inputTokens", 0),
+                "output": usage.get("outputTokens", 0),
+                "total": usage.get("totalTokens", 0),
+            },
+            "guardrail_triggered": False,
+            "violation_type": None,
+        }
 
-    # Step 8: Persist turn in session history
-    _append_turn(session, query, answer)
-
-    log.info(
-        "chat_turn_complete",
-        session_id=session_id,
-        turn=session["turn_count"],
-        sources_count=len(sources),
-        tokens_total=tokens["total"],
-    )
-
-    return _build_result(
-        answer=answer,
-        sources=sources,
-        session_id=session_id,
-        tokens_used=tokens,
-        guardrail_triggered=False,
-    )
+    except Exception as e:
+        log.error("chat_error", error=str(e))
+        return {
+            "answer": FALLBACK_RESPONSE,
+            "sources": [],
+            "session_id": session_id,
+            "tokens_used": {"input": 0, "output": 0, "total": 0},
+            "guardrail_triggered": False,
+            "violation_type": None,
+        }
 
 
 async def handle_chat_stream(
@@ -361,9 +314,7 @@ def _call_converse(messages: list[dict], student_id: str) -> dict:
     Separated into its own function so it can be run in an executor.
     """
     request: dict = {
-        "modelId": MODEL_ARN.split("/")[-1]
-        if MODEL_ARN.startswith("arn:")
-        else MODEL_ARN,
+        "modelId": MODEL_ARN,
         "messages": messages,
         "system": [{"text": CONVERSE_SYSTEM_PROMPT}],
         "inferenceConfig": {
@@ -386,9 +337,7 @@ def _call_converse(messages: list[dict], student_id: str) -> dict:
 def _call_converse_stream(messages: list[dict], student_id: str) -> dict:
     """Synchronous converse_stream call — returns the streaming response object."""
     request: dict = {
-        "modelId": MODEL_ARN.split("/")[-1]
-        if MODEL_ARN.startswith("arn:")
-        else MODEL_ARN,
+        "modelId": MODEL_ARN,
         "messages": messages,
         "system": [{"text": CONVERSE_SYSTEM_PROMPT}],
         "inferenceConfig": {

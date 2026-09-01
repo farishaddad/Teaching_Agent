@@ -88,14 +88,17 @@ def verify_token(token: str) -> StudentUser:
         token,
         signing_key.key,
         algorithms=["RS256"],
-        audience=COGNITO_APP_CLIENT_ID,
         issuer=_ISSUER,
         options={
             "verify_exp": True,
-            "verify_aud": True,
+            "verify_aud": False,  # Cognito access tokens: aud != client_id
             "verify_iss": True,
         },
     )
+    # For access tokens, verify client_id claim instead of aud
+    token_client = payload.get("client_id") or payload.get("aud")
+    if COGNITO_APP_CLIENT_ID and token_client and token_client != COGNITO_APP_CLIENT_ID:
+        raise pyjwt.InvalidTokenError("Token client_id does not match app client")
 
     # Cognito groups are in the cognito:groups claim
     groups: list[str] = payload.get("cognito:groups", [])

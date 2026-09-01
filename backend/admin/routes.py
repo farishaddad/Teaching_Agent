@@ -266,7 +266,7 @@ async def cost_breakdown(
 async def token_usage(
     request: Request,
     days: int = Query(30, ge=1, le=90),
-    group_by: str = Query("day", regex="^(day|week|student)$"),
+    group_by: str = Query("day", pattern="^(day|week|student)$"),
     _: None = Depends(require_instructor),
 ):
     """Get token usage metrics, grouped by day, week, or student.

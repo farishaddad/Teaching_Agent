@@ -1,12 +1,24 @@
 /**
- * Tutorial Chapter — renders a single chapter's markdown content
- * with code block copy buttons and navigation
+ * Tutorial Chapter — fetches markdown from static files (no auth required)
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+interface Chapter {
+  slug: string;
+  title: string;
+  estimated_minutes: number;
+}
+
+const CHAPTERS: Chapter[] = [
+  { slug: '01-architecture', title: 'Architecture Overview', estimated_minutes: 15 },
+  { slug: '02-authentication', title: 'Setting Up Authentication', estimated_minutes: 20 },
+  { slug: '03-rag-pipeline', title: 'Building the RAG Pipeline', estimated_minutes: 25 },
+  { slug: '04-guardrails', title: 'Implementing Guardrails', estimated_minutes: 25 },
+  { slug: '05-tracking', title: 'Tracking & Analytics', estimated_minutes: 20 },
+  { slug: '06-deployment', title: 'Deployment', estimated_minutes: 20 },
+  { slug: '07-extending', title: 'Extending the Agent', estimated_minutes: 25 },
+];
 
 interface TutorialChapterProps {
   slug: string;
@@ -15,114 +27,104 @@ interface TutorialChapterProps {
   onNavigate: (slug: string) => void;
 }
 
-export default function TutorialChapter({
-  slug,
-  isCompleted,
-  onToggleComplete,
-  onNavigate,
-}: TutorialChapterProps) {
+export default function TutorialChapter({ slug, isCompleted, onToggleComplete, onNavigate }: TutorialChapterProps) {
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['tutorial-chapter', slug],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/tutorial/${slug}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Chapter not found');
-      return res.json();
-    },
-    enabled: !!slug,
-  });
+  const chapterIndex = CHAPTERS.findIndex(c => c.slug === slug);
+  const chapter = CHAPTERS[chapterIndex];
 
-  // Scroll to top on chapter change
   useEffect(() => {
+    setLoading(true);
+    setError('');
+    // Fetch directly from Vite static assets — no auth needed
+    fetch(`/tutorial/${slug}.md`)
+      .then(res => {
+        if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+        return res.text();
+      })
+      .then(md => {
+        setContent(md);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
     contentRef.current?.scrollTo(0, 0);
   }, [slug]);
 
-  // Add copy buttons to code blocks after render
+  // Add copy buttons to code blocks
   useEffect(() => {
-    if (!contentRef.current) return;
-    const codeBlocks = contentRef.current.querySelectorAll('pre');
-    codeBlocks.forEach((block) => {
-      if (block.querySelector('.copy-btn')) return; // Already has button
+    if (!contentRef.current || loading) return;
+    const blocks = contentRef.current.querySelectorAll('pre');
+    blocks.forEach(block => {
+      if (block.querySelector('.copy-btn')) return;
       const btn = document.createElement('button');
       btn.className = 'copy-btn';
       btn.textContent = '📋 Copy';
-      btn.style.cssText = 'position:absolute;top:4px;right:4px;font-size:11px;padding:2px 8px;background:#374151;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;opacity:0.7;';
+      btn.style.cssText = 'position:absolute;top:6px;right:6px;font-size:11px;padding:3px 8px;background:#374151;color:#d1d5db;border:none;border-radius:4px;cursor:pointer';
       btn.onclick = () => {
-        const code = block.querySelector('code')?.textContent || block.textContent || '';
-        navigator.clipboard.writeText(code);
+        navigator.clipboard.writeText(block.querySelector('code')?.textContent || block.textContent || '');
         btn.textContent = '✓ Copied!';
         setTimeout(() => (btn.textContent = '📋 Copy'), 2000);
       };
       block.style.position = 'relative';
       block.appendChild(btn);
     });
-  }, [data?.content]);
+  }, [content, loading]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+      <span className="text-gray-500">Loading chapter...</span>
+    </div>
+  );
+
+  if (error) return (
+    <div className="p-8">
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-700 font-medium">Could not load chapter</p>
+        <p className="text-red-500 text-sm mt-1">{error}</p>
+        <p className="text-xs text-gray-400 mt-2">Make sure you ran: <code>cp tutorial/*.md frontend/public/tutorial/</code></p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700">Chapter not found. Please select a chapter from the sidebar.</p>
-        </div>
-      </div>
-    );
-  }
-
-  const html = markdownToHtml(data?.content || '');
+  const html = markdownToHtml(content);
 
   return (
-    <div ref={contentRef} className="max-w-4xl mx-auto px-8 py-6">
-      {/* Chapter header */}
+    <div ref={contentRef} className="max-w-4xl mx-auto px-8 py-6 overflow-y-auto">
       <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{data?.title}</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            ⏱️ {data?.estimated_minutes} min read
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{chapter?.title || slug}</h1>
+          <p className="text-sm text-gray-500 mt-1">⏱️ {chapter?.estimated_minutes || 0} min read</p>
         </div>
         <button
           onClick={onToggleComplete}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            isCompleted
-              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${isCompleted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
         >
           {isCompleted ? '✅ Completed' : '☐ Mark Complete'}
         </button>
       </div>
 
-      {/* Markdown content */}
       <article
-        className="prose prose-gray max-w-none prose-headings:scroll-mt-4 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100"
+        className="prose prose-gray max-w-none"
+        style={{ lineHeight: '1.7' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
 
-      {/* Navigation */}
       <div className="flex items-center justify-between mt-12 pt-6 border-t border-gray-200">
-        {data?.prev_chapter ? (
-          <button
-            onClick={() => onNavigate(data.prev_chapter)}
-            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            ← Previous Chapter
+        {chapterIndex > 0 ? (
+          <button onClick={() => onNavigate(CHAPTERS[chapterIndex - 1].slug)} className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            ← Previous
           </button>
         ) : <div />}
-        {data?.next_chapter ? (
-          <button
-            onClick={() => onNavigate(data.next_chapter)}
-            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Next Chapter →
+        {chapterIndex < CHAPTERS.length - 1 ? (
+          <button onClick={() => onNavigate(CHAPTERS[chapterIndex + 1].slug)} className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            Next →
           </button>
         ) : (
           <span className="text-sm text-green-600 font-medium">🎉 Tutorial Complete!</span>
@@ -132,53 +134,34 @@ export default function TutorialChapter({
   );
 }
 
-/**
- * Simple markdown → HTML converter (covers headings, code, tables, lists, bold, italic, links)
- * For production, use a library like marked or remark.
- */
 function markdownToHtml(md: string): string {
-  let html = md
-    // Code blocks (```lang\n...\n```)
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Headings
-    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Bold + italic
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  return md
+    .replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) =>
+      `<pre style="background:#1e293b;color:#e2e8f0;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px"><code class="language-${lang}">${escHtml(code)}</code></pre>`)
+    .replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:2px 5px;border-radius:3px;font-size:0.9em">$1</code>')
+    .replace(/^#{4} (.+)$/gm, '<h4 style="font-size:1rem;font-weight:600;margin:1.5rem 0 0.5rem">$1</h4>')
+    .replace(/^#{3} (.+)$/gm, '<h3 style="font-size:1.15rem;font-weight:700;margin:2rem 0 0.5rem">$1</h3>')
+    .replace(/^#{2} (.+)$/gm, '<h2 style="font-size:1.4rem;font-weight:700;margin:2.5rem 0 0.75rem;padding-bottom:0.5rem;border-bottom:2px solid #e2e8f0">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 style="font-size:1.8rem;font-weight:800;margin:0 0 1rem">$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    // Horizontal rule
-    .replace(/^---$/gm, '<hr>')
-    // Tables (basic)
-    .replace(/^\|(.+)\|$/gm, (match) => {
-      const cells = match.split('|').filter(Boolean).map(c => c.trim());
-      if (cells.every(c => /^[-:]+$/.test(c))) return ''; // separator row
-      const tag = 'td';
-      return `<tr>${cells.map(c => `<${tag}>${c}</${tag}>`).join('')}</tr>`;
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:underline">$1</a>')
+    .replace(/^> (.+)$/gm, '<blockquote style="border-left:4px solid #e2e8f0;margin:1rem 0;padding:0.5rem 1rem;color:#64748b">$1</blockquote>')
+    .replace(/^\|(.+)\|$/gm, (row) => {
+      const cells = row.split('|').filter(Boolean).map(c => c.trim());
+      if (cells.every(c => /^[-:]+$/.test(c))) return '';
+      return `<tr>${cells.map(c => `<td style="border:1px solid #e2e8f0;padding:8px 12px">${c}</td>`).join('')}</tr>`;
     })
-    // Unordered lists
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    // Ordered lists
-    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    // Paragraphs (double newline)
-    .replace(/\n\n/g, '</p><p>')
-    // Single newlines in flow
-    .replace(/\n/g, '<br>');
+    .replace(/(<tr>.*<\/tr>)+/gs, m => `<table style="border-collapse:collapse;width:100%;margin:1rem 0">${m}</table>`)
+    .replace(/^- (.+)$/gm, '<li style="margin:0.25rem 0">$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li style="margin:0.25rem 0">$1</li>')
+    .replace(/(<li.*<\/li>(\n)?)+/g, m => `<ul style="margin:0.75rem 0;padding-left:1.5rem">${m}</ul>`)
+    .replace(/^---$/gm, '<hr style="margin:2rem 0;border:none;border-top:1px solid #e2e8f0">')
+    .replace(/\n\n/g, '</p><p style="margin:0.75rem 0">')
+    .replace(/^(.)/m, '<p style="margin:0.75rem 0">$1')
+    + '</p>';
+}
 
-  // Wrap in paragraph
-  html = `<p>${html}</p>`;
-
-  // Wrap consecutive <li> in <ul>
-  html = html.replace(/(<li>.*?<\/li>)+/gs, '<ul>$&</ul>');
-
-  // Wrap consecutive <tr> in <table>
-  html = html.replace(/(<tr>.*?<\/tr>)+/gs, '<table class="border-collapse w-full">$&</table>');
-
-  return html;
+function escHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

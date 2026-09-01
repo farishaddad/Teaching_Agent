@@ -108,10 +108,10 @@ async def update_topic_progress(
         )
 
         item = response.get("Attributes", {})
-        questions_asked = item.get("questions_asked", 1)
+        questions_asked = float(item.get("questions_asked", 1))
 
         # Recalculate confidence (simplified — full version uses session tracking)
-        unique_sessions = item.get("unique_sessions", 1)
+        unique_sessions = float(item.get("unique_sessions", 1))
         avg_depth = questions_asked / max(unique_sessions, 1)
         confidence = min(1.0, (avg_depth * 0.3) + (unique_sessions * 0.1))
         weakness = questions_asked > 5 and confidence < 0.4

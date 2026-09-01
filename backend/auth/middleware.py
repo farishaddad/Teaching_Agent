@@ -22,9 +22,12 @@ from backend.auth.models import StudentUser
 logger = structlog.get_logger()
 
 # Paths that bypass authentication entirely
-PUBLIC_PATHS: frozenset[str] = frozenset(
-    {"/health", "/docs", "/openapi.json", "/redoc", "/auth/callback"}
+PUBLIC_PATHS = frozenset(
+    {"/health", "/docs", "/openapi.json", "/redoc"}
 )
+
+# Path prefixes that bypass auth
+PUBLIC_PREFIXES = ("/api/auth/", "/api/tutorial")
 
 # Cookie settings — must match those set at login
 _COOKIE_SECURE = True   # HTTPS only; set False for local dev via env if needed
@@ -48,6 +51,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         # ── Public paths bypass ───────────────────────────────────────────────
         if request.url.path in PUBLIC_PATHS:
+            return await call_next(request)
+        if request.url.path.startswith(PUBLIC_PREFIXES):
             return await call_next(request)
 
         # ── Extract token ─────────────────────────────────────────────────────

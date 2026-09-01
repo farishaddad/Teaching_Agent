@@ -9,7 +9,11 @@ from fastapi import APIRouter, HTTPException
 logger = structlog.get_logger()
 router = APIRouter()
 
-TUTORIAL_DIR = Path(os.environ.get("TUTORIAL_DIR", "tutorial"))
+# Resolve tutorial directory relative to Lambda task root (/var/task/)
+# or relative to the project root for local dev
+_env_dir = os.environ.get("TUTORIAL_DIR", "tutorial")
+_base = Path("/var/task") if Path("/var/task").exists() else Path(__file__).resolve().parent.parent.parent
+TUTORIAL_DIR = _base / _env_dir
 
 CHAPTERS = [
     {"slug": "01-architecture", "title": "Architecture Overview", "estimated_minutes": 15},
