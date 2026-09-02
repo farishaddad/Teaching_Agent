@@ -13,6 +13,7 @@ from infrastructure.rag_stack import TeachingAgentRAGStack
 from infrastructure.guardrails_stack import TeachingAgentGuardrailsStack
 from infrastructure.tracking_stack import TeachingAgentTrackingStack
 from infrastructure.api_stack import TeachingAgentAPIStack
+from infrastructure.frontend_stack import TeachingAgentFrontendStack
 
 app = cdk.App()
 
@@ -31,8 +32,19 @@ env = cdk.Environment(
 deploy_env = app.node.try_get_context("env") or "dev"
 kb_id_param_name = f"/teaching-agent/{deploy_env}/bedrock-kb-id"
 
+# Public frontend origin (CloudFront). Overridable via CDK context
+# (``-c frontend_domain=<host>``) so the value isn't hardcoded across stacks and
+# survives a CloudFront distribution being recreated. Defaults to the current
+# deployed distribution. Used for Cognito callback/logout URLs and API CORS.
+frontend_domain = (
+    app.node.try_get_context("frontend_domain") or "d32yz1ssnunfr5.cloudfront.net"
+)
+frontend_origin = f"https://{frontend_domain}"
+
 # Stack 1: Authentication (Cognito)
-auth_stack = TeachingAgentAuthStack(app, "TeachingAgentAuth", env=env)
+auth_stack = TeachingAgentAuthStack(
+    app, "TeachingAgentAuth", env=env, frontend_origin=frontend_origin
+)
 
 # Stack 2: RAG (S3 bucket for course materials — KB created via console)
 rag_stack = TeachingAgentRAGStack(app, "TeachingAgentRAG", env=env)
@@ -69,6 +81,21 @@ api_stack = TeachingAgentAPIStack(
     knowledge_base_id=resolved_kb_id,
     guardrail_id=guardrails_stack.guardrail_id,
     tracking_table=tracking_stack.table,
+    frontend_origin=frontend_origin,
+)
+
+# Stack 6: Frontend (S3 + CloudFront) — serves the React SPA publicly and
+# proxies /api/* to the API Gateway origin (same-origin, no CORS).
+# The API Gateway domain is derived from the REST API id (cross-stack ref).
+api_domain = (
+    f"{api_stack.api.rest_api_id}.execute-api.{env.region}.amazonaws.com"
+)
+frontend_stack = TeachingAgentFrontendStack(
+    app,
+    "TeachingAgentFrontend",
+    env=env,
+    api_domain=api_domain,
+    api_stage="prod",
 )
 
 app.synth()

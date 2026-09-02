@@ -21,13 +21,28 @@ from backend.auth.models import StudentUser
 
 logger = structlog.get_logger()
 
-# Paths that bypass authentication entirely
+# Paths that bypass authentication entirely.
+# NOTE: /api/auth/callback is public (no session exists yet — it CREATES one).
+# But /api/auth/me, /api/auth/logout and /api/auth/refresh must NOT be public:
+# they rely on the middleware verifying the token and setting
+# request.state.current_user. (Previously the broad "/api/auth/" prefix made
+# /api/auth/me bypass auth, so it never had a user and always returned 401 —
+# which broke session rehydration and bounced logged-in users back to login.)
+# /api/auth/refresh is exempt because it authenticates via the refresh_token
+# cookie itself, not the access token.
 PUBLIC_PATHS = frozenset(
-    {"/health", "/docs", "/openapi.json", "/redoc"}
+    {
+        "/health",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/api/auth/callback",
+        "/api/auth/refresh",
+    }
 )
 
-# Path prefixes that bypass auth
-PUBLIC_PREFIXES = ("/api/auth/", "/api/tutorial")
+# Path prefixes that bypass auth (tutorial content is public course material).
+PUBLIC_PREFIXES = ("/api/tutorial",)
 
 # Cookie settings — must match those set at login
 _COOKIE_SECURE = True   # HTTPS only; set False for local dev via env if needed

@@ -82,25 +82,50 @@ class TeachingAgentAPIStack(Stack):
         knowledge_base_id: str,
         guardrail_id: str,
         tracking_table,
+        frontend_origin: str = "",
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Derive a content-based asset hash from the inputs that actually affect
-        # the bundle: requirements.txt (dependency set) plus a bundling-strategy
-        # version tag. The default source-dir hash does not change when only the
-        # pip flags in LocalPipBundling change, and a static custom hash must be
-        # bumped by hand; hashing the real inputs makes CDK re-bundle + publish
-        # automatically whenever dependencies or the strategy change.
+        # Derive a content-based asset hash from EVERYTHING that affects the
+        # bundle: requirements.txt (deps), the backend/ and tutorial/ source
+        # trees (copied into the bundle), plus a bundling-strategy version tag.
+        # The default source-dir hash misses pip-flag-only changes, and a static
+        # hash must be bumped by hand and silently skips backend code changes
+        # (a real bug we hit: a main.py edit deployed as "no changes"). Hashing
+        # the real inputs makes CDK re-bundle + publish whenever deps, backend
+        # source, tutorial content, or the strategy change.
         import hashlib as _hashlib
         import os as _os
 
         _project_root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-        with open(_os.path.join(_project_root, "requirements.txt"), "rb") as _fh:
-            _req_digest = _hashlib.sha256(_fh.read()).hexdigest()[:16]
-        # Bump the strategy tag when LocalPipBundling logic changes.
-        _bundle_strategy = "linux-cp312-x86_64-v3"
-        _asset_hash = f"teaching-agent-api-{_bundle_strategy}-{_req_digest}"
+
+        def _hash_path(hasher, path):
+            """Fold a file or directory tree into the hasher (name + bytes)."""
+            if _os.path.isfile(path):
+                hasher.update(path.encode())
+                with open(path, "rb") as fh:
+                    hasher.update(fh.read())
+            elif _os.path.isdir(path):
+                for root, dirs, files in _os.walk(path):
+                    # Skip caches for stable, meaningful hashes.
+                    dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+                    for name in sorted(files):
+                        if name.endswith(".pyc"):
+                            continue
+                        fp = _os.path.join(root, name)
+                        rel = _os.path.relpath(fp, _project_root)
+                        hasher.update(rel.encode())
+                        with open(fp, "rb") as fh:
+                            hasher.update(fh.read())
+
+        _h = _hashlib.sha256()
+        # Bump the strategy tag when LocalPipBundling logic itself changes.
+        _h.update(b"linux-cp312-x86_64-v4")
+        _hash_path(_h, _os.path.join(_project_root, "requirements.txt"))
+        _hash_path(_h, _os.path.join(_project_root, "backend"))
+        _hash_path(_h, _os.path.join(_project_root, "tutorial"))
+        _asset_hash = f"teaching-agent-api-{_h.hexdigest()[:24]}"
 
         # Lambda function — FastAPI via Mangum
         self.api_lambda = _lambda.Function(
@@ -154,6 +179,11 @@ class TeachingAgentAPIStack(Stack):
                 "BEDROCK_GUARDRAIL_VERSION": "1",
                 "TRACKING_TABLE_NAME": tracking_table.table_name,
                 "TUTORIAL_DIR": "tutorial",
+                # Public frontend origin allowed by CORS (read by main.py's
+                # ALLOWED_ORIGINS). Same-origin CloudFront /api proxy means CORS
+                # isn't normally exercised, but this keeps direct cross-origin
+                # calls working and avoids hardcoding the domain in app code.
+                "ALLOWED_ORIGINS": frontend_origin,
             },
         )
 
