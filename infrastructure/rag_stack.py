@@ -41,5 +41,22 @@ class TeachingAgentRAGStack(Stack):
         CfnOutput(
             self,
             "NextStep",
-            value="Create Bedrock KB via console pointing to this S3 bucket, then set BEDROCK_KB_ID env var on Lambda",
+            value=(
+                "Create the Bedrock KB (console or scripts/create_kb.sh) pointing "
+                "to this S3 bucket, store the KB ID in SSM at "
+                "/teaching-agent/{env}/bedrock-kb-id (e.g. /teaching-agent/dev/"
+                "bedrock-kb-id), then run: cdk deploy TeachingAgentAPI"
+            ),
+        )
+        # SSM parameter path the API stack reads (via value_from_lookup) to
+        # source BEDROCK_KB_ID. Per-environment convention matches app.py, which
+        # builds the name from the ``env`` CDK context selector (default "dev").
+        CfnOutput(
+            self,
+            "KbIdParameterName",
+            value="/teaching-agent/dev/bedrock-kb-id",
+            description=(
+                "SSM parameter holding the Bedrock Knowledge Base ID for the dev "
+                "environment; use /teaching-agent/{env}/bedrock-kb-id per env."
+            ),
         )

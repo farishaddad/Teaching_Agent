@@ -108,8 +108,21 @@ echo "============================================"
 echo "Knowledge Base ID: $KB_ID"
 echo "Data Source ID:    $DS_ID"
 echo ""
-echo "Set this in your environment:"
-echo "  export BEDROCK_KB_ID=$KB_ID"
+
+# Step 4: Store the KB ID in the per-environment SSM parameter (durable source of truth)
+echo "🔧 Storing Knowledge Base ID in SSM Parameter Store..."
+aws ssm put-parameter \
+    --name "/teaching-agent/${ENV:-dev}/bedrock-kb-id" \
+    --type String \
+    --value "$KB_ID" \
+    --overwrite \
+    --region "$REGION" \
+    --output json > /dev/null
+
+echo "✅ Stored at /teaching-agent/${ENV:-dev}/bedrock-kb-id"
+echo ""
+echo "Now redeploy so CDK stamps the real KB ID into the API Lambda:"
+echo "  cdk deploy TeachingAgentAPI"
 echo ""
 echo "Monitor progress:"
 echo "  aws bedrock-agent list-ingestion-jobs --knowledge-base-id $KB_ID --data-source-id $DS_ID --region $REGION"

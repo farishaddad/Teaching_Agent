@@ -41,6 +41,45 @@ cdk bootstrap
 cdk deploy --all
 ```
 
+### 🧠 Knowledge Base setup
+
+The API Lambda needs a Bedrock Knowledge Base (KB) ID to answer questions with RAG. That ID is **not** hardcoded — it is sourced from an SSM Parameter Store parameter that CDK reads at synth time, so the deployed value always matches the template (no configuration drift, no manual Lambda edits).
+
+**SSM parameter convention** — the KB ID lives at a per-environment path:
+
+```
+/teaching-agent/{env}/bedrock-kb-id
+```
+
+The `{env}` segment is selected via CDK context (`-c env=dev|prod`) and defaults to `dev`. So the dev parameter is `/teaching-agent/dev/bedrock-kb-id` and prod is `/teaching-agent/prod/bedrock-kb-id`.
+
+**Seed the parameter** once the KB exists:
+
+```bash
+aws ssm put-parameter \
+  --name "/teaching-agent/dev/bedrock-kb-id" \
+  --type String \
+  --value "<KB_ID>" \
+  --overwrite \
+  --region eu-west-2
+```
+
+`scripts/create_kb.sh` runs this command for you automatically after it creates the Knowledge Base, so you only need to run it by hand if you created the KB some other way (e.g. the console).
+
+**Deploy ordering** — because the API stack reads the KB ID at synth time, follow this order:
+
+1. Deploy the RAG/S3 and other stacks first (`cdk deploy --all`, or at least `TeachingAgentRAG`). This creates the `teaching-agent-materials-*` bucket that the KB ingests from.
+2. Create the Knowledge Base pointing at the materials bucket — via the Bedrock console or `scripts/create_kb.sh`.
+3. Seed the SSM parameter with the new KB ID (the script does this; otherwise run the `put-parameter` command above).
+4. Deploy the API stack so the Lambda picks up the real KB ID:
+   ```bash
+   cdk deploy TeachingAgentAPI
+   ```
+
+**First-deploy bootstrap** — on the very first deploy, before the KB exists and before the SSM parameter is set, the app resolves `BEDROCK_KB_ID` to an empty string. Synth and deploy still succeed, and RAG degrades gracefully: the runtime logs `knowledge_base_id_not_configured` and returns a safe "knowledge base not configured" response instead of erroring. Once you seed the parameter and redeploy `TeachingAgentAPI`, RAG comes online — no manual Lambda patching needed.
+
+**Drift guarantee** — the KB ID is resolved from SSM at synth time (`value_from_lookup`) and stamped as a plain literal into the CloudFormation template, not a `{{resolve:ssm:...}}` dynamic reference. Because the deployed value equals the template value, `aws cloudformation detect-stack-drift --stack-name TeachingAgentAPI` reports the stack `IN_SYNC`, and redeploys no longer revert the KB ID to a placeholder.
+
 ### Local Development
 ```bash
 # Backend

@@ -1,0 +1,199 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration test (BEFORE implementing fix)": {
+      "status": "passed",
+      "failingExample": "Counterexample confirming the bug (bug-condition exploration test PASSED on unfixed source): synthesizing TeachingAgentAPI from current source, the AWS::Lambda::Function `teaching-agent-api` has Environment.Variables.BEDROCK_KB_ID == \"PLACEHOLDER_SET_AFTER_KB_CREATION\". This deliveredKbId != the active KB ID \"JUZEF2UAU0\", so isBugCondition(X) is true. Root cause = hardcoded literal `knowledge_base_id=\"PLACEHOLDER_SET_AFTER_KB_CREATION\"` in infrastructure/app.py, mapped straight into the Lambda env var `\"BEDROCK_KB_ID\": knowledge_base_id` in infrastructure/api_stack.py. At runtime this drives backend/rag/knowledge_base.py to call Bedrock Retrieve/RetrieveAndGenerate against a non-existent KB.",
+      "lastRunTimestamp": 1788282892928
+    },
+    "3.7 Verify preservation tests still pass": {
+      "status": "passed",
+      "lastRunTimestamp": 1788292187531
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test (BEFORE implementing fix)": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617015
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282625162
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282914664
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617063
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282918502
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788290833331
+      }
+    ],
+    "3.1 Resolve the KB ID from SSM in `infrastructure/app.py`": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617087
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788290840169
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291121676
+      }
+    ],
+    "3.2 Verify bug condition exploration test now reflects the fix (fix-checking)": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617106
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291129052
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291554651
+      }
+    ],
+    "3.3 Confirm `infrastructure/api_stack.py` needs no behavioral change": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617125
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291560098
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291644055
+      }
+    ],
+    "3.4 Update `infrastructure/rag_stack.py` operator guidance": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617143
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291649610
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291743928
+      }
+    ],
+    "3.5 Update helper scripts `scripts/create_kb.sh` and `scripts/upload_to_s3.sh`": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617162
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291748760
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291861702
+      }
+    ],
+    "3.6 Update operator documentation (README / deployment docs)": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617180
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291867855
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291977199
+      }
+    ],
+    "3.7 Verify preservation tests still pass": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617196
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788291982066
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788292214985
+      }
+    ],
+    "4. Checkpoint - Ensure all automated tests pass": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617224
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788292219583
+      },
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788292505480
+      }
+    ],
+    "5. Manual AWS verification (NOT auto-runnable — requires live AWS)": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788282617241
+      }
+    ],
+    "3. Fix for BEDROCK_KB_ID configuration drift (SSM value_from_lookup)": [
+      {
+        "executionId": "2616fc9f-9b56-442a-9779-59cc1db36e8f",
+        "chatSessionId": "sess_7b0b4e66-5f5a-426b-af08-62749bb8d4e5",
+        "timestamp": 1788292215009
+      }
+    ]
+  }
+}
