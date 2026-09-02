@@ -8,6 +8,7 @@ import AdminLayout from './components/admin/AdminLayout';
 import Tutorial from './components/Tutorial';
 import Login from './components/Login';
 import AuthCallback from './components/AuthCallback';
+import RequireInstructor from './components/RequireInstructor';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,7 @@ export default function App() {
                 <div className="space-x-4">
                   <a href="/tutorial" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Tutorial</a>
                   <a href="/admin" className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Admin</a>
+                  <a href="/login" className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Login</a>
                 </div>
               </div>
             </div>
@@ -44,8 +46,15 @@ export default function App() {
           {/* Tutorial */}
           <Route path="/tutorial" element={<Tutorial />} />
           
-          {/* Admin dashboard */}
-          <Route path="/admin/*" element={<AdminLayout />} />
+          {/* Admin dashboard — instructors only */}
+          <Route
+            path="/admin/*"
+            element={
+              <RequireInstructor>
+                <AdminLayout />
+              </RequireInstructor>
+            }
+          />
           
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

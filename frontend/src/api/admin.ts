@@ -2,7 +2,12 @@
  * Admin API client — communicates with /api/admin/* endpoints
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// When VITE_API_URL is set, call it directly (e.g. production build against
+// the deployed API). When empty (local dev), use a relative path so requests
+// flow through the Vite dev proxy (see vite.config.ts) to the live API — this
+// keeps the admin client consistent with the rest of the app and avoids
+// hardcoding a backend URL.
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 async function adminFetch(path: string, options?: RequestInit) {
   const response = await fetch(`${API_BASE}/api/admin${path}`, {

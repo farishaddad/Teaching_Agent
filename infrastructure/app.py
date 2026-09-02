@@ -64,6 +64,8 @@ api_stack = TeachingAgentAPIStack(
     "TeachingAgentAPI",
     env=env,
     user_pool=auth_stack.user_pool,
+    app_client=auth_stack.app_client,
+    cognito_domain=auth_stack.domain.base_url(),
     knowledge_base_id=resolved_kb_id,
     guardrail_id=guardrails_stack.guardrail_id,
     tracking_table=tracking_stack.table,
