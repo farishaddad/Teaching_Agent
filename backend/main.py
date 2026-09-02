@@ -1,5 +1,7 @@
 """Teaching Agent — FastAPI Application Entry Point."""
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
@@ -17,10 +19,20 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS — restrict to frontend domain in production
+# CORS — allowed frontend origins. The deployed SPA calls the API same-origin
+# via the CloudFront /api/* proxy (so CORS isn't normally exercised in prod),
+# but we still allow localhost plus the deployed frontend origin for
+# direct/cross-origin calls. The deployed origin is injected by CDK via
+# ALLOWED_ORIGINS (comma-separated) rather than hardcoded here.
+_default_origins = ["http://localhost:5173"]  # Vite dev server
+_extra_origins = [
+    o.strip()
+    for o in os.environ.get("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server; override via env in prod
+    allow_origins=_default_origins + _extra_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

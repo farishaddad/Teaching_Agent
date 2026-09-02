@@ -20,7 +20,14 @@ from constructs import Construct
 class TeachingAgentAuthStack(Stack):
     """Cognito User Pool, App Client, Hosted UI, and user groups."""
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        frontend_origin: str = "https://d32yz1ssnunfr5.cloudfront.net",
+        **kwargs,
+    ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # ── User Pool ─────────────────────────────────────────────────────────
@@ -120,14 +127,16 @@ class TeachingAgentAuthStack(Stack):
                     cognito.OAuthScope.EMAIL,
                     cognito.OAuthScope.PROFILE,
                 ],
-                # Callback URLs — include localhost for dev, real domain for prod
+                # Callback URLs — localhost for dev plus the public frontend
+                # origin (CloudFront by default, overridable via the
+                # ``frontend_origin`` prop / ``-c frontend_domain`` context).
                 callback_urls=[
                     "http://localhost:5173/auth/callback",
-                    "https://teaching-agent.example.com/auth/callback",
+                    f"{frontend_origin}/auth/callback",
                 ],
                 logout_urls=[
                     "http://localhost:5173/",
-                    "https://teaching-agent.example.com/",
+                    f"{frontend_origin}/",
                 ],
             ),
             # Token validity windows
