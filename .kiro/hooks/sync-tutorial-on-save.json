@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Sync tutorial to public on save",
+      "trigger": "PostFileSave",
+      "description": "When a canonical tutorial/*.md chapter is saved, copy it into frontend/public/tutorial/ so the SPA (dev preview and next build) renders the current content. Keeps the two tutorial copies from drifting.",
+      "matcher": "(^|/)tutorial/[^/]+\\.md$",
+      "action": {
+        "type": "command",
+        "command": "node frontend/scripts/sync-tutorial.mjs"
+      }
+    }
+  ]
+}

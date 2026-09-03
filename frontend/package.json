@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "sync-tutorial": "node scripts/sync-tutorial.mjs",
+    "predev": "npm run sync-tutorial",
     "dev": "vite",
+    "prebuild": "npm run sync-tutorial",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
