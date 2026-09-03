@@ -58,12 +58,14 @@ async def chat(
         query=body.message,
         student_id=current_user.id,
         session_id=body.session_id,
+        include_web=body.include_web,
     )
 
     sources = [
         SourceCitation(
             source=s.get("source", ""),
             excerpt=s.get("excerpt", ""),
+            url=s.get("url"),
         )
         for s in result.get("sources", [])
     ]

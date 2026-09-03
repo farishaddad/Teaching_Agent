@@ -31,6 +31,14 @@ class ChatRequest(BaseModel):
             "Omit on the first message; include the returned value on subsequent turns."
         ),
     )
+    include_web: bool = Field(
+        default=False,
+        description=(
+            "When true, supplement the course materials with web search results "
+            "(course materials are still used first). Defaults to false — "
+            "course materials only."
+        ),
+    )
 
     @field_validator("message")
     @classmethod
@@ -54,13 +62,17 @@ class ChatRequest(BaseModel):
 
 
 class SourceCitation(BaseModel):
-    """A single cited source from the course materials."""
+    """A single cited source — a course-materials file or a web page."""
 
     source: str = Field(..., description="Filename or title of the source document.")
     excerpt: str = Field(
         default="",
         max_length=300,
         description="Short excerpt from the retrieved passage.",
+    )
+    url: Optional[str] = Field(
+        default=None,
+        description="Link to the source when it is a web result. Null for course materials.",
     )
 
 

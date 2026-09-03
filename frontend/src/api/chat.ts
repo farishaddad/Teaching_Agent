@@ -12,6 +12,8 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 export interface SourceCitation {
   source: string;
   excerpt: string;
+  /** Present for web results — a link to the page. Null/absent for course materials. */
+  url?: string | null;
 }
 
 export interface TokenUsage {
@@ -35,10 +37,13 @@ export interface ChatResponse {
  * @param sessionId Optional session id to continue a conversation. Omit on the
  *                  first turn; pass the value returned by the previous response
  *                  on subsequent turns.
+ * @param includeWeb When true, ask the backend to supplement course materials
+ *                  with web search results. Defaults to false.
  */
 export async function sendChat(
   message: string,
   sessionId?: string,
+  includeWeb: boolean = false,
 ): Promise<ChatResponse> {
   // Note the trailing slash: the chat router mounts the handler at "/" under
   // the /api/chat prefix, so the endpoint is /api/chat/.
@@ -48,6 +53,7 @@ export async function sendChat(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message,
+      include_web: includeWeb,
       ...(sessionId ? { session_id: sessionId } : {}),
     }),
   });

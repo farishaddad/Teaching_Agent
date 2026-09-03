@@ -40,7 +40,9 @@ from backend.rag.prompt_templates import (
     FALLBACK_RESPONSE,
     OUT_OF_SCOPE_RESPONSE,
     SERVICE_ERROR_RESPONSE,
+    WEB_AUGMENTED_SYSTEM_PROMPT,
 )
+from backend.rag.web_search import search_web
 
 # Bedrock runtime client — owned by chat_handler, separate from knowledge_base client
 _bedrock_runtime: Optional[boto3.client] = None
@@ -121,9 +123,19 @@ async def handle_chat(
     query: str,
     student_id: str,
     session_id: Optional[str] = None,
+    include_web: bool = False,
 ) -> dict:
-    """Handle a single chat turn: Retrieve from Managed KB + Converse for generation."""
-    log = logger.bind(student_id=student_id, query_preview=query[:80])
+    """Handle a single chat turn: retrieve from the KB (and optionally the web),
+    then generate an answer with the Converse API.
+
+    Args:
+        query: The student's question.
+        student_id: Cognito sub, for logging + tracking.
+        session_id: Existing session id, or None to start a new one.
+        include_web: When True, supplement course materials with web search
+            results (course materials are still used first).
+    """
+    log = logger.bind(student_id=student_id, query_preview=query[:80], web=include_web)
 
     if not session_id:
         session_id = str(uuid.uuid4())
@@ -132,31 +144,61 @@ async def handle_chat(
     log.info("rag_retrieve_start")
 
     try:
-        # Step 1: Retrieve from Managed KB (no retrievalConfiguration needed)
-        chunks = await asyncio.get_event_loop().run_in_executor(
+        # Step 1: Retrieve from the Managed KB.
+        kb_chunks = await asyncio.get_event_loop().run_in_executor(
             None, retrieve, query, student_id
         )
 
-        # Step 2: Build prompt with retrieved context
-        if chunks:
-            context = "\n\n".join([f"[Source: {c.get('source','unknown')}]\n{c.get('text','')}" for c in chunks[:5]])
-            user_message = f"Using the following course materials:\n\n{context}\n\nStudent question: {query}"
+        # Step 1b: Optionally supplement with web results (course materials first).
+        web_chunks: list[dict] = []
+        if include_web:
+            web_chunks = await asyncio.get_event_loop().run_in_executor(
+                None, search_web, query, 4
+            )
+            log.info("web_augmentation", web_results=len(web_chunks))
+
+        # Step 2: Build the prompt context. Course materials first, then web.
+        context_sections: list[str] = []
+        if kb_chunks:
+            kb_block = "\n\n".join(
+                f"[Source: {c.get('source', 'unknown')}]\n{c.get('text', '')}"
+                for c in kb_chunks[:5]
+            )
+            context_sections.append(f"## Course materials\n{kb_block}")
+        if web_chunks:
+            web_block = "\n\n".join(
+                f"[Web: {c.get('source', 'Web result')}] ({c.get('url', '')})\n{c.get('text', '')}"
+                for c in web_chunks
+            )
+            context_sections.append(f"## Web results\n{web_block}")
+
+        if context_sections:
+            context = "\n\n".join(context_sections)
+            user_message = f"{context}\n\nStudent question: {query}"
         else:
-            user_message = f"Student question: {query}\n\nNote: No specific course material was found for this question."
+            user_message = (
+                f"Student question: {query}\n\n"
+                "Note: No specific course material was found for this question."
+            )
 
         messages = [{"role": "user", "content": [{"text": user_message}]}]
-        system = [{"text": "You are an expert teaching assistant for an Agentic AI course. Answer questions grounded in the provided course materials. If materials are insufficient, say so honestly."}]
 
-        # Step 3: Generate with Converse API (EU cross-region inference profile)
+        # Use the relaxed, web-aware system prompt only when web results were
+        # actually added; otherwise keep the strict course-materials prompt.
+        system_prompt = (
+            WEB_AUGMENTED_SYSTEM_PROMPT if web_chunks else CONVERSE_SYSTEM_PROMPT
+        )
+
+        # Step 3: Generate with the Converse API.
         raw = await asyncio.get_event_loop().run_in_executor(
-            None, _call_converse, messages, student_id
+            None, _call_converse, messages, student_id, system_prompt
         )
 
         stop_reason = raw.get("stopReason", "")
         if stop_reason == "guardrail_intervened":
             return {
                 "answer": POLICY.denial_message,
-                "sources": [c.get("source","") for c in chunks],
+                "sources": _merge_sources(kb_chunks, web_chunks),
                 "session_id": session_id,
                 "tokens_used": {"input": 0, "output": 0, "total": 0},
                 "guardrail_triggered": True,
@@ -169,7 +211,7 @@ async def handle_chat(
 
         return {
             "answer": answer or FALLBACK_RESPONSE,
-            "sources": [{"source": c.get("source",""), "excerpt": c.get("text","")[:200]} for c in chunks[:3]],
+            "sources": _merge_sources(kb_chunks, web_chunks),
             "session_id": session_id,
             "tokens_used": {
                 "input": usage.get("inputTokens", 0),
@@ -318,15 +360,26 @@ async def handle_chat_stream(
 # ── Bedrock call helpers ──────────────────────────────────────────────────────
 
 
-def _call_converse(messages: list[dict], student_id: str) -> dict:
+def _call_converse(
+    messages: list[dict],
+    student_id: str,
+    system_prompt: str = CONVERSE_SYSTEM_PROMPT,
+) -> dict:
     """Synchronous Converse API call with guardrails.
 
     Separated into its own function so it can be run in an executor.
+
+    Args:
+        messages: Converse-format message list.
+        student_id: For logging.
+        system_prompt: System prompt to use. Defaults to the strict
+            course-materials prompt; the web-augmented prompt is passed in
+            when web results are included.
     """
     request: dict = {
         "modelId": MODEL_ARN,
         "messages": messages,
-        "system": [{"text": CONVERSE_SYSTEM_PROMPT}],
+        "system": [{"text": system_prompt}],
         # Only set temperature (low, for factual grounding). Newer Claude
         # models reject specifying both temperature and topP in Converse.
         "inferenceConfig": {
@@ -425,6 +478,28 @@ def _service_error_result(session_id: str) -> dict:
         "violation_type": None,
         "error": True,
     }
+
+
+def _merge_sources(kb_chunks: list[dict], web_chunks: list[dict]) -> list[dict]:
+    """Build the citation list from KB + web chunks.
+
+    Course-material sources come first (top 3), then web sources (top 3, each
+    carrying its ``url`` so the UI can render a clickable link). Course sources
+    have ``url=None``.
+    """
+    sources: list[dict] = [
+        {"source": c.get("source", ""), "excerpt": c.get("text", "")[:200], "url": None}
+        for c in kb_chunks[:3]
+    ]
+    sources.extend(
+        {
+            "source": c.get("source", ""),
+            "excerpt": c.get("text", "")[:200],
+            "url": c.get("url") or None,
+        }
+        for c in web_chunks[:3]
+    )
+    return sources
 
 
 def _build_result(

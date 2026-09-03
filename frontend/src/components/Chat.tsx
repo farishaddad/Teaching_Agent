@@ -21,10 +21,11 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [includeWeb, setIncludeWeb] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const mutation = useMutation({
-    mutationFn: (message: string) => sendChat(message, sessionId),
+    mutationFn: (message: string) => sendChat(message, sessionId, includeWeb),
     onSuccess: (res) => {
       setSessionId(res.session_id);
       setTurns((prev) => [
@@ -101,7 +102,18 @@ export default function Chat() {
                   <ul className="space-y-1">
                     {turn.sources.map((s, si) => (
                       <li key={si} className="text-xs text-gray-500">
-                        <span className="font-medium text-gray-700">{s.source}</span>
+                        {s.url ? (
+                          <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-blue-600 hover:underline"
+                          >
+                            🌐 {s.source}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-gray-700">{s.source}</span>
+                        )}
                         {s.excerpt && <span className="text-gray-400"> — {s.excerpt}</span>}
                       </li>
                     ))}
@@ -154,9 +166,36 @@ export default function Chat() {
             Send
           </button>
         </div>
+
+        {/* Source mode toggle */}
+        <div className="flex items-center justify-between mt-2">
+          <div className="inline-flex rounded-lg border border-gray-200 p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setIncludeWeb(false)}
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                !includeWeb ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              📄 Course materials
+            </button>
+            <button
+              type="button"
+              onClick={() => setIncludeWeb(true)}
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                includeWeb ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              🌐 Course materials + Web
+            </button>
+          </div>
+        </div>
+
         <p className="text-[11px] text-gray-400 mt-1.5">
-          Answers are grounded in the course materials. Press Enter to send,
-          Shift+Enter for a new line.
+          {includeWeb
+            ? 'Answers use the course materials first, then supplement with web results (cited with links).'
+            : 'Answers are grounded in the course materials only.'}{' '}
+          Press Enter to send, Shift+Enter for a new line.
         </p>
       </form>
     </div>

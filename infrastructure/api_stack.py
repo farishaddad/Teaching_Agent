@@ -17,6 +17,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 import jsii
+import os
 
 # Generation model for student chat (Bedrock Converse). Claude 3.5 Sonnet
 # (the original project default) is no longer available; this is the current
@@ -199,6 +200,12 @@ class TeachingAgentAPIStack(Stack):
                 # RAG course-materials bucket — the admin "Course Materials"
                 # panel lists/uploads/deletes objects here.
                 "MATERIALS_BUCKET_NAME": materials_bucket.bucket_name if materials_bucket else "",
+                # Tavily API key for the optional "Course materials + Web" chat
+                # mode. Sourced from CDK context (-c tavily_api_key=...) or the
+                # TAVILY_API_KEY environment variable at synth time. Empty by
+                # default — web search degrades gracefully to KB-only when unset.
+                "TAVILY_API_KEY": self.node.try_get_context("tavily_api_key")
+                or os.environ.get("TAVILY_API_KEY", ""),
             },
         )
 
