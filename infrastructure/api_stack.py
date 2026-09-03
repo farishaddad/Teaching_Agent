@@ -14,6 +14,7 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_apigateway as apigw,
     aws_iam as iam,
+    aws_secretsmanager as secretsmanager,
 )
 from constructs import Construct
 import jsii
@@ -135,6 +136,19 @@ class TeachingAgentAPIStack(Stack):
         _hash_path(_h, _os.path.join(_project_root, "tutorial"))
         _asset_hash = f"teaching-agent-api-{_h.hexdigest()[:24]}"
 
+        # Tavily API key secret (for the "Course materials + Web" chat mode).
+        # Looked up by its well-known name so every deploy wires it up
+        # automatically — the key value never appears in code or the template.
+        # Override the name via CDK context (-c tavily_secret_name=...) if needed.
+        # If the secret doesn't exist, the Lambda still gets the ARN env but the
+        # runtime read fails gracefully and chat runs course-materials-only.
+        tavily_secret_name = (
+            self.node.try_get_context("tavily_secret_name") or "teaching-agent/tavily-api-key"
+        )
+        tavily_secret = secretsmanager.Secret.from_secret_name_v2(
+            self, "TavilyApiKeySecret", tavily_secret_name
+        )
+
         # Lambda function — FastAPI via Mangum
         self.api_lambda = _lambda.Function(
             self,
@@ -201,13 +215,16 @@ class TeachingAgentAPIStack(Stack):
                 # panel lists/uploads/deletes objects here.
                 "MATERIALS_BUCKET_NAME": materials_bucket.bucket_name if materials_bucket else "",
                 # Tavily API key for the optional "Course materials + Web" chat
-                # mode. Sourced from CDK context (-c tavily_api_key=...) or the
-                # TAVILY_API_KEY environment variable at synth time. Empty by
-                # default — web search degrades gracefully to KB-only when unset.
-                "TAVILY_API_KEY": self.node.try_get_context("tavily_api_key")
-                or os.environ.get("TAVILY_API_KEY", ""),
+                # mode. The key lives in Secrets Manager; the Lambda reads it at
+                # runtime via this ARN. Empty when no secret is configured, in
+                # which case web search degrades gracefully to KB-only.
+                "TAVILY_SECRET_ARN": tavily_secret.secret_arn if tavily_secret else "",
             },
         )
+
+        # Allow the API Lambda to read the Tavily API key secret.
+        if tavily_secret is not None:
+            tavily_secret.grant_read(self.api_lambda)
 
         # Course-materials bucket permissions (admin materials panel).
         if materials_bucket is not None:

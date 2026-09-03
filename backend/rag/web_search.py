@@ -19,13 +19,62 @@ Configuration:
 import os
 from typing import Optional
 
+import boto3
 import httpx
 import structlog
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = structlog.get_logger()
 
-TAVILY_API_KEY: str = os.environ.get("TAVILY_API_KEY", "")
+# The API key is stored in Secrets Manager (referenced by ARN via the
+# TAVILY_SECRET_ARN env var set by the API stack). For local development a
+# plaintext TAVILY_API_KEY env var is also honoured. The resolved value is
+# cached at module level so warm Lambda invocations don't re-fetch the secret.
+_TAVILY_SECRET_ARN: str = os.environ.get("TAVILY_SECRET_ARN", "")
+_TAVILY_ENV_KEY: str = os.environ.get("TAVILY_API_KEY", "")
+_REGION: str = os.environ.get("BEDROCK_REGION", os.environ.get("COGNITO_REGION", "eu-west-2"))
+
 _TAVILY_URL = "https://api.tavily.com/search"
+
+# Cached resolved key. Sentinel ``None`` means "not resolved yet"; empty string
+# means "resolved, but no key available".
+_cached_key: Optional[str] = None
+_secrets_client = None
+
+
+def _get_secrets_client():
+    global _secrets_client
+    if _secrets_client is None:
+        _secrets_client = boto3.client("secretsmanager", region_name=_REGION)
+    return _secrets_client
+
+
+def _resolve_api_key() -> str:
+    """Resolve the Tavily API key (Secrets Manager first, then env), cached.
+
+    Returns an empty string if no key is available, which makes ``search_web``
+    degrade gracefully to course-materials-only.
+    """
+    global _cached_key
+    if _cached_key is not None:
+        return _cached_key
+
+    # Local-dev / override: plaintext env var wins if set.
+    if _TAVILY_ENV_KEY:
+        _cached_key = _TAVILY_ENV_KEY
+        return _cached_key
+
+    if _TAVILY_SECRET_ARN:
+        try:
+            resp = _get_secrets_client().get_secret_value(SecretId=_TAVILY_SECRET_ARN)
+            _cached_key = (resp.get("SecretString") or "").strip()
+        except (ClientError, BotoCoreError) as exc:
+            logger.error("tavily_secret_fetch_failed", error=str(exc))
+            _cached_key = ""
+    else:
+        _cached_key = ""
+
+    return _cached_key
 
 # Keep web latency bounded — the Lambda has a 60s budget shared with KB
 # retrieval and generation.
@@ -38,7 +87,7 @@ _MAX_CONTENT_CHARS = 1000
 
 def is_configured() -> bool:
     """Return True if a Tavily API key is available."""
-    return bool(TAVILY_API_KEY)
+    return bool(_resolve_api_key())
 
 
 def search_web(query: str, max_results: int = 4) -> list[dict]:
@@ -54,7 +103,8 @@ def search_web(query: str, max_results: int = 4) -> list[dict]:
         list if no API key is configured or on any error — callers treat an
         empty list as "no web results" and fall back to course materials only.
     """
-    if not TAVILY_API_KEY:
+    api_key = _resolve_api_key()
+    if not api_key:
         logger.info("web_search_skipped_no_key")
         return []
 
@@ -67,7 +117,7 @@ def search_web(query: str, max_results: int = 4) -> list[dict]:
         "include_answer": False,     # We generate the answer ourselves via Bedrock.
     }
     headers = {
-        "Authorization": f"Bearer {TAVILY_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
