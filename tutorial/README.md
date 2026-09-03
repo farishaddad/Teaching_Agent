@@ -16,7 +16,8 @@ Welcome! This tutorial walks you through every component of the Teaching Agent y
 | 4 | **[Guardrails](./04-guardrails.md)** | Topic denial, content filtering, PII protection, word policy, contextual grounding |
 | 5 | [Tracking & Analytics](./05-tracking.md) | DynamoDB single-table logging, progress tracking, usage analytics |
 | 6 | [Deployment](./06-deployment.md) | The 6-stack CDK deploy, KB-in-SSM, Lambda bundling, **CloudFront + S3 frontend hosting** |
-| 7 | [Extending the Agent](./07-extending.md) | Tool use, multi-agent patterns, evaluation |
+| 7 | [Extending the Agent](./07-extending.md) | Tool use, multi-agent patterns, evaluation, **web search augmentation** |
+| 8 | [Managing Course Materials](./08-course-materials.md) | Admin panel: presigned S3 upload, list/delete, one-click Knowledge Base **Sync** |
 
 > Frontend hosting (CloudFront + private S3 + the same-origin `/api` proxy) is introduced in Chapter 1 and deployed in Chapter 6.
 

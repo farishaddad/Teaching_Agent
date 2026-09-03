@@ -76,7 +76,7 @@ Everything is defined as infrastructure-as-code with **AWS CDK v2 (Python)** acr
 ### 3. RAG (Retrieval-Augmented Generation)
 - **What**: Amazon Bedrock Knowledge Base backed by course-material files in S3.
 - **Why**: Grounding — the agent answers from verified course content, not hallucinations.
-- **How**: Student question → retrieve relevant chunks → synthesize an answer with citations. The KB is created out-of-band and its ID is handed to the Lambda via SSM (Chapter 3).
+- **How**: Student question → retrieve relevant chunks → synthesize an answer with citations. The KB is created out-of-band and its ID is handed to the Lambda via SSM (Chapter 3). An optional **web-search mode** can supplement the course materials with live results ([Chapter 7](./07-extending.md)).
 
 ### 4. Guardrails
 - **What**: Amazon Bedrock Guardrails (topic denial + content filters + PII + word policy + contextual grounding), published as a **version** (not DRAFT).
@@ -89,9 +89,9 @@ Everything is defined as infrastructure-as-code with **AWS CDK v2 (Python)** acr
 - **How**: Fire-and-forget async writes after every response (don't block the chat).
 
 ### 6. Admin Dashboard
-- **What**: Instructor-only routes for student management and analytics.
-- **Why**: Course management — create logins, monitor engagement, spot struggling students.
-- **How**: Gated by the `instructors` Cognito group (checked in the Lambda, and by a `RequireInstructor` guard in the SPA).
+- **What**: Instructor-only routes for student management, analytics, and **course-materials management** (upload/list/delete the KB's source files + a one-click Knowledge Base **Sync**).
+- **Why**: Course management — create logins, monitor engagement, spot struggling students, and keep the Knowledge Base content current without touching AWS.
+- **How**: Gated by the `instructors` Cognito group (checked in the Lambda, and by a `RequireInstructor` guard in the SPA). Large uploads go **directly to S3 via presigned URLs**. Details in [Chapter 8](./08-course-materials.md).
 
 ---
 
@@ -176,7 +176,7 @@ This keeps verification logic in one place (versioned with the app) and lets the
 
 | Component | Monthly Estimate | Notes |
 |-----------|-----------------|-------|
-| Bedrock (Claude) | ~$15–40 | Depends on usage volume and model (the code defaults to Claude 3 Haiku for cost; see Chapter 3) |
+| Bedrock (Claude) | ~$15–40 | Depends on usage volume and model (set via `BEDROCK_MODEL_ARN` — currently Claude Sonnet 4.5 via the EU cross-region inference profile; see Chapter 3) |
 | Bedrock Knowledge Base | ~$5–10 | OpenSearch Serverless + retrieval |
 | Bedrock Guardrails | ~$2–5 | Per-assessment pricing |
 | DynamoDB | ~$1–3 | On-demand, low volume |

@@ -183,16 +183,20 @@ self.table = dynamodb.Table(
     sort_key=dynamodb.Attribute(name="SK", type=dynamodb.AttributeType.STRING),
     billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
     time_to_live_attribute="ttl",
-    removal_policy=RemovalPolicy.RETAIN,
+    removal_policy=RemovalPolicy.RETAIN,      # keep student data if the stack is torn down
+    point_in_time_recovery=True,              # continuous backups for recovery
 )
 
-# GSI for admin date-based queries
+# GSI for admin date-based queries (projects ALL attributes)
 self.table.add_global_secondary_index(
     index_name="GSI1",
     partition_key=dynamodb.Attribute(name="GSI1PK", type=dynamodb.AttributeType.STRING),
     sort_key=dynamodb.Attribute(name="GSI1SK", type=dynamodb.AttributeType.STRING),
+    projection_type=dynamodb.ProjectionType.ALL,
 )
 ```
+
+> The table (`teaching-agent-tracking`) uses generic `PK`/`SK` string keys so multiple entity types share one table, `PAY_PER_REQUEST` billing (no capacity planning), a `ttl` attribute for auto-expiry, point-in-time recovery for backups, and a `RETAIN` removal policy so student history survives a stack teardown.
 
 ---
 

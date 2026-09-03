@@ -51,13 +51,17 @@ ALLOWED_TOPICS = [
 ]
 
 DENIED_TOPICS = [
-    "Politics, elections, political opinions",
-    "Religion and religious beliefs",
-    "Personal relationship advice",
-    "Medical or legal advice",
-    "Hacking, exploits, or malicious activities",
+    "Politics — elections, political opinions, party/policy debates",
+    "Religion — beliefs, spiritual practices, theological debates",
+    "PersonalAdvice — relationships, life coaching, emotional counseling",
+    "MedicalLegalFinancial — diagnoses, legal advice, investment/tax advice",
+    "AcademicDishonesty — writing essays for students, exam cheating, plagiarism",
+    "Hacking — exploits, malware, unauthorized access, password cracking",
+    "GeneralChat — off-topic chit-chat, jokes, stories, sports, food recs",
 ]
 ```
+
+These are the seven `DENY` topics actually configured in `guardrails_stack.py`. Note `AcademicDishonesty` — a teaching agent specifically must refuse to do students' work for them.
 
 **How it works**: Bedrock uses a classifier to detect the topic of the input/output and compares it against your allow/deny lists. The classifier understands semantic meaning — so "Who should I vote for?" matches "Politics" even though those exact words aren't in the policy.
 
@@ -85,27 +89,47 @@ Automatically detect and handle personally identifiable information.
 
 ```python
 PII_POLICIES = {
-    "EMAIL": "ANONYMIZE",      # Replace with [EMAIL]
-    "PHONE": "ANONYMIZE",      # Replace with [PHONE]
-    "ADDRESS": "ANONYMIZE",    # Replace with [ADDRESS]
-    "AWS_ACCESS_KEY": "BLOCK", # Block the entire message
-    "AWS_SECRET_KEY": "BLOCK", # Block the entire message
+    "EMAIL": "ANONYMIZE",                 # Replace with [EMAIL]
+    "PHONE": "ANONYMIZE",                 # Replace with [PHONE]
+    "ADDRESS": "ANONYMIZE",               # Replace with [ADDRESS]
+    "NAME": "ANONYMIZE",                  # Replace with [NAME]
+    "AWS_ACCESS_KEY": "BLOCK",            # Block the entire message
+    "AWS_SECRET_KEY": "BLOCK",            # Block the entire message
+    "CREDIT_DEBIT_CARD_NUMBER": "BLOCK",  # Block the entire message
 }
 ```
 
 **Actions**:
 - `ANONYMIZE`: Replace the PII with a placeholder (message still goes through)
-- `BLOCK`: Block the entire message (used for credentials that should never appear)
+- `BLOCK`: Block the entire message (used for credentials/card numbers that should never appear)
 
-### 4. Contextual Grounding
+### 4. Word Policy (Prompt-Injection Defense)
 
-Prevent hallucination by checking if the response is supported by the retrieved context.
+Beyond topics and content, the guardrail blocks a curated list of jailbreak / prompt-injection phrases and enables the managed profanity list.
 
 ```python
-GROUNDING_THRESHOLD = 0.7  # Response must be ≥70% grounded in retrieved sources
+BLOCKED_PHRASES = [
+    "ignore previous instructions", "ignore all instructions",
+    "disregard your instructions", "pretend you are", "you are now",
+    "act as if you have no restrictions", "override your safety",
+    "bypass your filters", "DAN mode", "jailbreak",
+    "system prompt", "what are your instructions", "reveal your prompt",
+]
+MANAGED_WORD_LISTS = ["PROFANITY"]
 ```
 
-If the LLM's response contains claims not supported by the retrieved course materials, the guardrail blocks it — preventing students from receiving fabricated information.
+This is a cheap, deterministic first line against the most common injection attempts (complementing, not replacing, the system prompt and content filters).
+
+### 5. Contextual Grounding
+
+Prevent hallucination by checking that the response is supported by — and relevant to — the retrieved context.
+
+```python
+GROUNDING_THRESHOLD = 0.7   # Block if response is <70% grounded in retrieved sources
+RELEVANCE_THRESHOLD = 0.5   # Block if response is <50% relevant to the question
+```
+
+If the LLM's response contains claims not supported by the retrieved course materials, or drifts off the question, the guardrail blocks it — preventing students from receiving fabricated or irrelevant information.
 
 ---
 
@@ -151,8 +175,20 @@ guardrail = bedrock.CfnGuardrail(
             # ... more PII rules
         ]
     ),
+
+    # Word policy + contextual grounding also configured (see stack)
 )
+
+# Publish a real VERSION — don't rely on DRAFT in production.
+guardrail_version = bedrock.CfnGuardrailVersion(
+    self, "TeachingAgentGuardrailVersion",
+    guardrail_identifier=guardrail.attr_guardrail_id,
+    description="Production v1 — topics, content filters, PII, word policy, grounding",
+)
+guardrail_version.add_dependency(guardrail)
 ```
+
+The stack publishes a versioned guardrail and exports both the ID and the version number. The API stack then injects `BEDROCK_GUARDRAIL_VERSION="1"` into the Lambda — so runtime calls use the **published version `1`**, not `DRAFT`.
 
 ---
 
@@ -162,13 +198,13 @@ Once deployed, you reference the guardrail in every Bedrock Converse API call:
 
 ```python
 response = bedrock_runtime.converse(
-    modelId="anthropic.claude-3-5-sonnet-20241022-v2:0",
+    modelId=MODEL_ID,   # from BEDROCK_MODEL_ARN; code default is Claude 3 Haiku
     messages=messages,
     system=[{"text": system_prompt}],
     guardrailConfig={
-        "guardrailIdentifier": GUARDRAIL_ID,   # From CDK output
-        "guardrailVersion": GUARDRAIL_VERSION,  # "DRAFT" or version number
-        "trace": "enabled",                     # Shows what triggered
+        "guardrailIdentifier": GUARDRAIL_ID,     # from BEDROCK_GUARDRAIL_ID
+        "guardrailVersion": GUARDRAIL_VERSION,   # "1" (published) — from BEDROCK_GUARDRAIL_VERSION
+        "trace": "enabled",                       # shows what triggered
     },
 )
 
@@ -177,6 +213,8 @@ if response.get("stopReason") == "guardrail_intervened":
     # Return the safe denial message instead
     return POLICY.denial_message
 ```
+
+> The `retrieve_and_generate` path (Chapter 3) attaches the same guardrail via `generationConfiguration.guardrailConfiguration` instead of `guardrailConfig` — same guardrail ID + version `1`, different API shape.
 
 ---
 

@@ -13,6 +13,7 @@ const CHAPTERS = [
   { slug: '05-tracking', title: 'Tracking & Analytics', estimated_minutes: 20 },
   { slug: '06-deployment', title: 'Deployment', estimated_minutes: 20 },
   { slug: '07-extending', title: 'Extending the Agent', estimated_minutes: 25 },
+  { slug: '08-course-materials', title: 'Managing Course Materials', estimated_minutes: 15 },
 ];
 
 export default function Tutorial() {

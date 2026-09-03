@@ -173,7 +173,7 @@ response = bedrock_agent_runtime.retrieve_and_generate(
 
 > **Configuration reality:**
 > - The KB ID comes from `os.environ["BEDROCK_KB_ID"]`, with a fallback to `BEDROCK_KNOWLEDGE_BASE_ID`.
-> - `MODEL_ARN` **defaults to Claude 3 Haiku** (`anthropic.claude-3-haiku-20240307-v1:0`) for cost — override via the `BEDROCK_MODEL_ARN` env var (e.g. to a Claude 3.5 Sonnet ARN) if you want higher quality. The project's stated target model is Sonnet; the code default is Haiku, so set the env var accordingly for production.
+> - `MODEL_ARN` comes from the `BEDROCK_MODEL_ARN` env var, currently **Claude Sonnet 4.5** via the EU cross-region inference profile (`eu.anthropic.claude-sonnet-4-5-20250929-v1:0`). ⚠️ Older Claude 3.x models (including the original Haiku default) are now **Legacy** on Bedrock and reject Converse with `ResourceNotFoundException` — always point this at an ACTIVE model. Also note newer Claude models reject setting both `temperature` and `topP` in one call, so the code sets only `temperature`.
 > - If `BEDROCK_KB_ID` is empty (KB not yet created / SSM param unset), retrieval logs `knowledge_base_id_not_configured` and returns a safe fallback instead of erroring.
 
 ---
@@ -204,10 +204,10 @@ Students need to know WHERE the answer came from. The code turns Bedrock's citat
 ## Common Pitfalls
 
 1. **KB ID not in SSM**: created the KB but forgot to store its ID at `/teaching-agent/{env}/bedrock-kb-id`, so `BEDROCK_KB_ID` is empty and RAG silently degrades.
-2. **Stale index**: updated materials but forgot to re-sync the data source.
+2. **Stale index**: updated materials but forgot to re-sync the data source. The admin **Sync Knowledge Base** button ([Chapter 8](./08-course-materials.md)) triggers this from the UI.
 3. **Poor chunking**: chunks that split concepts mid-sentence.
 4. **No fallback**: agent tries to answer even when retrieval finds nothing relevant (handled here by `FALLBACK_RESPONSE`).
-5. **Wrong model expectation**: assuming Sonnet when the env defaults to Haiku.
+5. **Legacy model**: pointing `BEDROCK_MODEL_ARN` at a retired Claude 3.x model — Converse then fails and the chat returns a generic error.
 
 ---
 
