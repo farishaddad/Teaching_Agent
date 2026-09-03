@@ -82,6 +82,17 @@ FALLBACK_RESPONSE = (
     "If you think this topic should be covered, let your instructor know!"
 )
 
+# ── Service-error response ────────────────────────────────────────────────────
+# Shown when the assistant itself fails (e.g. the AI service is unavailable or
+# a request is rejected) — distinct from FALLBACK_RESPONSE so a genuine
+# "not in the materials" answer is never confused with a system problem.
+
+SERVICE_ERROR_RESPONSE = (
+    "Sorry — I ran into a problem answering that just now. This is a temporary "
+    "issue on my side, not a gap in the course materials. Please try again in a "
+    "moment. If it keeps happening, let your instructor know."
+)
+
 # ── Out-of-scope response ─────────────────────────────────────────────────────
 
 OUT_OF_SCOPE_RESPONSE = (

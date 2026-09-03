@@ -39,6 +39,7 @@ from backend.rag.prompt_templates import (
     CONVERSE_SYSTEM_PROMPT,
     FALLBACK_RESPONSE,
     OUT_OF_SCOPE_RESPONSE,
+    SERVICE_ERROR_RESPONSE,
 )
 
 # Bedrock runtime client — owned by chat_handler, separate from knowledge_base client
@@ -179,16 +180,25 @@ async def handle_chat(
             "violation_type": None,
         }
 
-    except Exception as e:
-        log.error("chat_error", error=str(e))
-        return {
-            "answer": FALLBACK_RESPONSE,
-            "sources": [],
-            "session_id": session_id,
-            "tokens_used": {"input": 0, "output": 0, "total": 0},
-            "guardrail_triggered": False,
-            "violation_type": None,
-        }
+    except (ClientError, BotoCoreError) as e:
+        # Bedrock/AWS service failure (throttling, model unavailable, invalid
+        # request, transient network). This is NOT "the answer isn't in the
+        # materials" — surface a distinct, honest error so the student knows to
+        # retry and so ops can see a real failure in the logs.
+        error_code = (
+            e.response.get("Error", {}).get("Code")
+            if isinstance(e, ClientError)
+            else type(e).__name__
+        )
+        log.error("chat_service_error", error_code=error_code, error=str(e))
+        return _service_error_result(session_id)
+
+    except Exception as e:  # noqa: BLE001 — last-resort guard
+        # Any other unexpected error is still a system problem, not a content
+        # gap. Return the service-error message rather than the "not in the
+        # materials" fallback so the two are never conflated.
+        log.error("chat_unexpected_error", error_type=type(e).__name__, error=str(e))
+        return _service_error_result(session_id)
 
 
 async def handle_chat_stream(
@@ -398,6 +408,23 @@ def _extract_violation_type(trace: dict) -> str:
 
 def _zero_tokens() -> dict:
     return {"input": 0, "output": 0, "total": 0}
+
+
+def _service_error_result(session_id: str) -> dict:
+    """Result for a system/service failure (distinct from a content gap).
+
+    Carries ``error=True`` so callers/logs can tell this apart from a normal
+    answer, while still returning a friendly, retry-oriented message.
+    """
+    return {
+        "answer": SERVICE_ERROR_RESPONSE,
+        "sources": [],
+        "session_id": session_id,
+        "tokens_used": {"input": 0, "output": 0, "total": 0},
+        "guardrail_triggered": False,
+        "violation_type": None,
+        "error": True,
+    }
 
 
 def _build_result(
