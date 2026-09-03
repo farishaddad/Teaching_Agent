@@ -56,6 +56,26 @@ export default function TutorialChapter({ slug, isCompleted, onToggleComplete, o
     contentRef.current?.scrollTo(0, 0);
   }, [slug]);
 
+  // Intercept internal chapter links so they navigate within the SPA instead
+  // of triggering a full-page (SPA-fallback) navigation to a .md path.
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root || loading) return;
+
+    const handler = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a[data-chapter]');
+      if (!anchor) return;
+      const targetSlug = anchor.getAttribute('data-chapter');
+      if (targetSlug && CHAPTERS.some(c => c.slug === targetSlug)) {
+        e.preventDefault();
+        onNavigate(targetSlug);
+      }
+    };
+
+    root.addEventListener('click', handler);
+    return () => root.removeEventListener('click', handler);
+  }, [content, loading, onNavigate]);
+
   // Add copy buttons to code blocks
   useEffect(() => {
     if (!contentRef.current || loading) return;
@@ -145,7 +165,23 @@ function markdownToHtml(md: string): string {
     .replace(/^# (.+)$/gm, '<h1 style="font-size:1.8rem;font-weight:800;margin:0 0 1rem">$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:underline">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, href) => {
+      // Internal chapter links look like ./02-authentication.md or
+      // 02-authentication.md (optionally with a #anchor). Render these as
+      // in-app navigation triggers instead of real anchors — otherwise the
+      // browser navigates to a non-routed path and the SPA fallback shows the
+      // landing page. External links (http/https) open in a new tab as usual.
+      const chapterMatch = /^\.?\/?((?:\d{2})-[a-z0-9-]+)\.md(?:#.*)?$/i.exec(href);
+      if (chapterMatch) {
+        const targetSlug = chapterMatch[1];
+        return `<a href="#${targetSlug}" data-chapter="${targetSlug}" style="color:#3b82f6;text-decoration:underline;cursor:pointer">${text}</a>`;
+      }
+      // README.md (tutorial index) → go to the first chapter.
+      if (/^\.?\/?README\.md(?:#.*)?$/i.test(href)) {
+        return `<a href="#01-architecture" data-chapter="01-architecture" style="color:#3b82f6;text-decoration:underline;cursor:pointer">${text}</a>`;
+      }
+      return `<a href="${href}" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:underline">${text}</a>`;
+    })
     .replace(/^> (.+)$/gm, '<blockquote style="border-left:4px solid #e2e8f0;margin:1rem 0;padding:0.5rem 1rem;color:#64748b">$1</blockquote>')
     .replace(/^\|(.+)\|$/gm, (row) => {
       const cells = row.split('|').filter(Boolean).map(c => c.trim());
