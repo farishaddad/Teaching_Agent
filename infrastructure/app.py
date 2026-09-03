@@ -41,9 +41,19 @@ frontend_domain = (
 )
 frontend_origin = f"https://{frontend_domain}"
 
+# SES sender for Cognito emails (verification / reset codes). Overridable via
+# CDK context (``-c ses_sender_email=no-reply@yourdomain.com``). Must be a
+# verified SES identity in the deployment region; empty falls back to the
+# Cognito default sender (poor deliverability to consumer inboxes).
+ses_sender_email = app.node.try_get_context("ses_sender_email") or "fahaddad@amazon.co.uk"
+
 # Stack 1: Authentication (Cognito)
 auth_stack = TeachingAgentAuthStack(
-    app, "TeachingAgentAuth", env=env, frontend_origin=frontend_origin
+    app,
+    "TeachingAgentAuth",
+    env=env,
+    frontend_origin=frontend_origin,
+    ses_sender_email=ses_sender_email,
 )
 
 # Stack 2: RAG (S3 bucket for course materials — KB created via console)

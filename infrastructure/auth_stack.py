@@ -26,9 +26,24 @@ class TeachingAgentAuthStack(Stack):
         construct_id: str,
         *,
         frontend_origin: str = "https://d32yz1ssnunfr5.cloudfront.net",
+        ses_sender_email: str = "",
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # Email delivery: use Amazon SES when a verified sender is provided
+        # (reliable delivery to Gmail/Outlook), otherwise fall back to the
+        # Cognito default sender (low quota, poor consumer-inbox deliverability).
+        # The SES identity must be verified in this region; in the SES sandbox
+        # recipients must also be verified until production access is granted.
+        if ses_sender_email:
+            pool_email = cognito.UserPoolEmail.with_ses(
+                from_email=ses_sender_email,
+                from_name="Teaching Agent",
+                ses_region=self.region,
+            )
+        else:
+            pool_email = cognito.UserPoolEmail.with_cognito()
 
         # ── User Pool ─────────────────────────────────────────────────────────
         self.user_pool = cognito.UserPool(
@@ -75,8 +90,9 @@ class TeachingAgentAuthStack(Stack):
             # MFA optional for now (can be upgraded to REQUIRED per cohort)
             mfa=cognito.Mfa.OPTIONAL,
             mfa_second_factor=cognito.MfaSecondFactor(sms=False, otp=True),
-            # Email configuration — use Cognito default for dev; SES for prod
-            email=cognito.UserPoolEmail.with_cognito(),
+            # Email configuration — SES when a verified sender is configured,
+            # else the Cognito default sender (see pool_email above).
+            email=pool_email,
             # Keep users across pool deletion in dev (set to RETAIN in prod)
             removal_policy=cdk.RemovalPolicy.DESTROY,
         )
