@@ -91,6 +91,7 @@ api_stack = TeachingAgentAPIStack(
     knowledge_base_id=resolved_kb_id,
     guardrail_id=guardrails_stack.guardrail_id,
     tracking_table=tracking_stack.table,
+    materials_bucket=rag_stack.materials_bucket,
     frontend_origin=frontend_origin,
 )
 

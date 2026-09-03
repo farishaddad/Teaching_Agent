@@ -8,10 +8,19 @@ from typing import Optional
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
+import os
+import re
+import uuid
+
 from backend.admin.analytics import get_cost_breakdown, get_overall_dashboard, get_student_progress
+from backend.admin import materials as materials_svc
 from backend.admin.models import (
     CostBreakdown,
+    MaterialItem,
+    MaterialList,
     OverallDashboard,
+    PresignUploadRequest,
+    PresignUploadResponse,
     StudentBulkCreate,
     StudentCreate,
     StudentInteractionHistory,
@@ -310,3 +319,88 @@ async def token_usage(
     else:  # student
         # Per-student breakdown — would require scanning all students
         return {"group_by": "student", "data": []}
+
+
+# ─── Course Materials (RAG S3 bucket) ─────────────────────────────────
+
+_SAFE_PREFIX_RE = re.compile(r"[^a-zA-Z0-9._/\-]")
+_SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9._\-]")
+
+
+def _safe_key(filename: str, prefix: str = "") -> str:
+    """Build a safe S3 key from a user-supplied filename + optional prefix.
+
+    Strips path traversal and unusual characters, and prefixes the base name
+    with a short uuid so re-uploads of the same filename don't silently
+    overwrite each other.
+    """
+    base = os.path.basename(filename).strip()
+    base = _SAFE_NAME_RE.sub("_", base) or "file"
+    clean_prefix = _SAFE_PREFIX_RE.sub("", prefix).strip("/")
+    unique = uuid.uuid4().hex[:8]
+    name = f"{unique}-{base}"
+    return f"{clean_prefix}/{name}" if clean_prefix else name
+
+
+@router.get("/materials", response_model=MaterialList)
+async def list_materials(
+    request: Request,
+    prefix: str = Query("", max_length=128),
+    _: None = Depends(require_instructor),
+):
+    """List all course-material objects in the RAG S3 bucket."""
+    try:
+        items = materials_svc.list_materials(prefix=prefix)
+    except materials_svc.MaterialsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return MaterialList(
+        bucket=materials_svc.MATERIALS_BUCKET,
+        items=[MaterialItem(**i) for i in items],
+        count=len(items),
+    )
+
+
+@router.post("/materials/presign", response_model=PresignUploadResponse)
+async def presign_material_upload(
+    request: Request,
+    body: PresignUploadRequest,
+    _: None = Depends(require_instructor),
+):
+    """Get a presigned URL to upload a course-material file directly to S3.
+
+    The browser PUTs the file to the returned URL (bypassing the API Gateway
+    10 MB limit). The client must send the same Content-Type header.
+    """
+    key = _safe_key(body.filename, body.prefix)
+    try:
+        result = materials_svc.presign_upload(key=key, content_type=body.content_type)
+    except materials_svc.MaterialsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return PresignUploadResponse(**result)
+
+
+@router.delete("/materials/{key:path}")
+async def delete_material(
+    request: Request,
+    key: str,
+    _: None = Depends(require_instructor),
+):
+    """Delete a course-material object (versioned bucket — recoverable)."""
+    if not key or key.endswith("/") or ".." in key:
+        raise HTTPException(status_code=400, detail="Invalid object key.")
+    try:
+        return materials_svc.delete_material(key=key)
+    except materials_svc.MaterialsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.post("/materials/sync")
+async def sync_materials(
+    request: Request,
+    _: None = Depends(require_instructor),
+):
+    """Trigger a Knowledge Base ingestion sync so uploads/deletes take effect."""
+    try:
+        return materials_svc.sync_knowledge_base()
+    except materials_svc.MaterialsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)

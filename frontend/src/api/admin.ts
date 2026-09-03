@@ -91,3 +91,78 @@ export function fetchStudentProgress(studentId: string) {
 export function fetchStudentInteractions(studentId: string, page: number = 1) {
   return adminFetch(`/students/${studentId}/interactions?page=${page}`);
 }
+
+// ─── Course Materials (RAG S3 bucket) ─────────────────────────────────
+
+export interface MaterialItem {
+  key: string;
+  size: number;
+  last_modified: string;
+}
+
+export interface MaterialList {
+  bucket: string;
+  items: MaterialItem[];
+  count: number;
+}
+
+export function listMaterials(prefix = ''): Promise<MaterialList> {
+  const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
+  return adminFetch(`/materials${params}`);
+}
+
+export function deleteMaterial(key: string) {
+  // Key may contain slashes; encode each segment but keep the path separators
+  // so it matches the backend's {key:path} route.
+  const encoded = key.split('/').map(encodeURIComponent).join('/');
+  return adminFetch(`/materials/${encoded}`, { method: 'DELETE' });
+}
+
+export function syncKnowledgeBase() {
+  return adminFetch('/materials/sync', { method: 'POST' });
+}
+
+interface PresignResponse {
+  url: string;
+  key: string;
+  method: string;
+  headers: Record<string, string>;
+  expires_in: number;
+  max_bytes: number;
+}
+
+/**
+ * Upload a course-material file: ask the backend for a presigned URL, then
+ * PUT the file directly to S3 (bypasses the API Gateway 10 MB limit). The
+ * direct-to-S3 request must NOT send credentials and MUST send the same
+ * Content-Type the URL was signed for.
+ */
+export async function uploadMaterial(file: File, prefix = ''): Promise<{ key: string }> {
+  const contentType = file.type || 'application/octet-stream';
+  const presign: PresignResponse = await adminFetch('/materials/presign', {
+    method: 'POST',
+    body: JSON.stringify({
+      filename: file.name,
+      content_type: contentType,
+      prefix,
+    }),
+  });
+
+  if (file.size > presign.max_bytes) {
+    throw new Error(
+      `File too large (${Math.round(file.size / 1024 / 1024)}MB). ` +
+      `Max is ${Math.round(presign.max_bytes / 1024 / 1024)}MB.`
+    );
+  }
+
+  const putRes = await fetch(presign.url, {
+    method: 'PUT',
+    headers: presign.headers,
+    body: file,
+    // Direct to S3 — no cookies/credentials.
+  });
+  if (!putRes.ok) {
+    throw new Error(`Upload to storage failed (HTTP ${putRes.status}).`);
+  }
+  return { key: presign.key };
+}

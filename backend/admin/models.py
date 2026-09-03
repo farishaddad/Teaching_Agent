@@ -52,6 +52,43 @@ class StudentBulkCreate(BaseModel):
     students: list[StudentCreate]
 
 
+# ─── Course Materials (RAG S3 bucket) ─────────────────────────────────
+
+class MaterialItem(BaseModel):
+    """A single object in the course-materials S3 bucket."""
+
+    key: str
+    size: int
+    last_modified: str
+
+
+class MaterialList(BaseModel):
+    """Listing of course materials."""
+
+    bucket: str
+    items: list[MaterialItem]
+    count: int
+
+
+class PresignUploadRequest(BaseModel):
+    """Request a presigned URL to upload a course-material file."""
+
+    filename: str = Field(..., min_length=1, max_length=255)
+    content_type: str = Field(..., min_length=1, max_length=128)
+    prefix: str = Field("", max_length=128, description="Optional key prefix, e.g. 'modules/'")
+
+
+class PresignUploadResponse(BaseModel):
+    """Presigned upload details the browser uses to PUT the file to S3."""
+
+    url: str
+    key: str
+    method: str
+    headers: dict
+    expires_in: int
+    max_bytes: int
+
+
 # ─── Interaction Analytics ────────────────────────────────────────────
 
 class InteractionSummary(BaseModel):

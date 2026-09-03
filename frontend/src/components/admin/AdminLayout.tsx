@@ -5,8 +5,9 @@
 import { useState } from 'react';
 import AdminDashboard from './AdminDashboard';
 import StudentList from './StudentList';
+import MaterialsList from './MaterialsList';
 
-type AdminView = 'dashboard' | 'students';
+type AdminView = 'dashboard' | 'students' | 'materials';
 
 export default function AdminLayout() {
   const [view, setView] = useState<AdminView>('dashboard');
@@ -14,6 +15,7 @@ export default function AdminLayout() {
   const navItems: { id: AdminView; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'students', label: 'Students', icon: '👥' },
+    { id: 'materials', label: 'Course Materials', icon: '📄' },
   ];
 
   return (
@@ -51,6 +53,7 @@ export default function AdminLayout() {
       <main className="flex-1 overflow-y-auto p-6">
         {view === 'dashboard' && <AdminDashboard />}
         {view === 'students' && <StudentList />}
+        {view === 'materials' && <MaterialsList />}
       </main>
     </div>
   );

@@ -82,6 +82,7 @@ class TeachingAgentAPIStack(Stack):
         knowledge_base_id: str,
         guardrail_id: str,
         tracking_table,
+        materials_bucket=None,
         frontend_origin: str = "",
         **kwargs,
     ) -> None:
@@ -184,8 +185,15 @@ class TeachingAgentAPIStack(Stack):
                 # isn't normally exercised, but this keeps direct cross-origin
                 # calls working and avoids hardcoding the domain in app code.
                 "ALLOWED_ORIGINS": frontend_origin,
+                # RAG course-materials bucket — the admin "Course Materials"
+                # panel lists/uploads/deletes objects here.
+                "MATERIALS_BUCKET_NAME": materials_bucket.bucket_name if materials_bucket else "",
             },
         )
+
+        # Course-materials bucket permissions (admin materials panel).
+        if materials_bucket is not None:
+            materials_bucket.grant_read_write(self.api_lambda)
 
         # Grant Lambda permissions
         tracking_table.grant_read_write_data(self.api_lambda)
@@ -199,6 +207,11 @@ class TeachingAgentAPIStack(Stack):
                     "bedrock:Retrieve",
                     "bedrock:RetrieveAndGenerate",
                     "bedrock:ApplyGuardrail",
+                    # Knowledge Base ingestion (admin "Sync Knowledge Base").
+                    "bedrock:ListDataSources",
+                    "bedrock:StartIngestionJob",
+                    "bedrock:GetIngestionJob",
+                    "bedrock:ListIngestionJobs",
                 ],
                 resources=["*"],
             )
