@@ -163,13 +163,55 @@ async def disable_student(student_id: str) -> dict:
 
 
 async def reset_student_password(student_id: str) -> dict:
-    """Trigger a password reset email for a student."""
+    """Trigger a password reset for a student.
+
+    Behaviour depends on the account status:
+    - CONFIRMED (has set a password): ``admin_reset_user_password`` sends a
+      reset code so the student can choose a new password.
+    - FORCE_CHANGE_PASSWORD (never logged in — still on the temp password):
+      ``admin_reset_user_password`` is not valid, so we re-send the original
+      invitation instead (a fresh temp password + invite email).
+    """
+    # Look up the current status so we pick the right operation.
+    try:
+        user = cognito_client.admin_get_user(
+            UserPoolId=COGNITO_USER_POOL_ID, Username=student_id
+        )
+    except cognito_client.exceptions.UserNotFoundException:
+        logger.warning("password_reset_user_not_found", student_id=student_id)
+        raise
+
+    status = user.get("UserStatus")
+    email = next(
+        (a["Value"] for a in user.get("UserAttributes", []) if a["Name"] == "email"),
+        None,
+    )
+
+    if status == "FORCE_CHANGE_PASSWORD":
+        # Student hasn't logged in yet — resend the invite rather than reset.
+        # RESEND goes through admin_create_user, which requires the email
+        # (the sign-in alias), NOT the Cognito sub.
+        if not email:
+            raise cognito_client.exceptions.UserNotFoundException(
+                {"Error": {"Code": "UserNotFoundException",
+                           "Message": "No email on file for this student."}},
+                "AdminCreateUser",
+            )
+        cognito_client.admin_create_user(
+            UserPoolId=COGNITO_USER_POOL_ID,
+            Username=email,
+            MessageAction="RESEND",
+            DesiredDeliveryMediums=["EMAIL"],
+        )
+        logger.info("password_invite_resent", student_id=student_id, status=status)
+        return {"student_id": student_id, "status": "invite_resent"}
+
     cognito_client.admin_reset_user_password(
         UserPoolId=COGNITO_USER_POOL_ID,
         Username=student_id,
     )
-    logger.info("password_reset_triggered", student_id=student_id)
-    return {"student_id": student_id, "status": "password_reset_sent"}
+    logger.info("password_reset_triggered", student_id=student_id, status=status)
+    return {"student_id": student_id, "status": "password_reset_sent", "email": email}
 
 
 def _get_attr(user: dict, attr_name: str) -> Optional[str]:

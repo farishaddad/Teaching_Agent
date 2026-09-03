@@ -40,7 +40,18 @@ export default function StudentList() {
 
   const resetMutation = useMutation({
     mutationFn: resetPassword,
-    onSuccess: () => alert('Password reset email sent.'),
+    onSuccess: (result: { status?: string }) => {
+      // The backend resets a confirmed user or re-sends the invite for a
+      // student who hasn't logged in yet — reflect which happened.
+      alert(
+        result?.status === 'invite_resent'
+          ? 'Student has not logged in yet — invitation email re-sent.'
+          : 'Password reset email sent.'
+      );
+    },
+    onError: (err: Error) => {
+      alert(`Password reset failed: ${err.message}`);
+    },
   });
 
   const filteredStudents = students.filter(

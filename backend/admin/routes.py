@@ -152,8 +152,22 @@ async def reset_password(
     student_id: str,
     _: None = Depends(require_instructor),
 ):
-    """Trigger a password reset email for a student."""
-    return await reset_student_password(student_id)
+    """Trigger a password reset (or resend the invite) for a student.
+
+    Returns a clear 4xx on known failures instead of an opaque 500 so the
+    admin UI can show a useful message.
+    """
+    try:
+        return await reset_student_password(student_id)
+    except Exception as exc:  # noqa: BLE001 — normalize Cognito errors for the UI
+        code = getattr(exc, "response", {}).get("Error", {}).get("Code", type(exc).__name__)
+        logger.warning("password_reset_failed", student_id=student_id, error_code=code, error=str(exc))
+        if code == "UserNotFoundException":
+            raise HTTPException(status_code=404, detail="Student not found.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not reset password ({code}). Please try again or contact support.",
+        )
 
 
 # ─── Student Progress & Weakness Analysis ────────────────────────────
