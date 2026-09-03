@@ -162,6 +162,25 @@ async def disable_student(student_id: str) -> dict:
     return {"student_id": student_id, "status": "disabled"}
 
 
+async def enable_student(student_id: str) -> dict:
+    """Re-enable a previously disabled student account."""
+    cognito_client.admin_enable_user(UserPoolId=COGNITO_USER_POOL_ID, Username=student_id)
+    logger.info("student_enabled", student_id=student_id)
+    return {"student_id": student_id, "status": "enabled"}
+
+
+async def delete_student(student_id: str) -> dict:
+    """Permanently delete a student's Cognito account.
+
+    This is irreversible — the account and its sign-in credentials are removed.
+    Interaction/progress records already written to DynamoDB are left intact
+    for historical reporting (they are keyed by the Cognito ``sub``).
+    """
+    cognito_client.admin_delete_user(UserPoolId=COGNITO_USER_POOL_ID, Username=student_id)
+    logger.info("student_deleted", student_id=student_id)
+    return {"student_id": student_id, "status": "deleted"}
+
+
 async def reset_student_password(student_id: str) -> dict:
     """Trigger a password reset for a student.
 

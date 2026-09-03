@@ -31,7 +31,9 @@ from backend.admin.models import (
 from backend.admin.student_manager import (
     bulk_create_students,
     create_student,
+    delete_student,
     disable_student,
+    enable_student,
     get_student,
     list_students,
     reset_student_password,
@@ -153,6 +155,40 @@ async def disable_student_account(
 ):
     """Disable a student account (revoke access without deleting data)."""
     return await disable_student(student_id)
+
+
+@router.post("/students/{student_id}/enable")
+async def enable_student_account(
+    request: Request,
+    student_id: str,
+    _: None = Depends(require_instructor),
+):
+    """Re-enable a previously disabled student account."""
+    try:
+        return await enable_student(student_id)
+    except Exception as exc:  # noqa: BLE001 — normalize Cognito errors for the UI
+        code = getattr(exc, "response", {}).get("Error", {}).get("Code", type(exc).__name__)
+        logger.warning("student_enable_failed", student_id=student_id, error_code=code, error=str(exc))
+        if code == "UserNotFoundException":
+            raise HTTPException(status_code=404, detail="Student not found.")
+        raise HTTPException(status_code=400, detail=f"Could not enable student ({code}).")
+
+
+@router.delete("/students/{student_id}")
+async def delete_student_account(
+    request: Request,
+    student_id: str,
+    _: None = Depends(require_instructor),
+):
+    """Permanently delete a student's account (irreversible)."""
+    try:
+        return await delete_student(student_id)
+    except Exception as exc:  # noqa: BLE001 — normalize Cognito errors for the UI
+        code = getattr(exc, "response", {}).get("Error", {}).get("Code", type(exc).__name__)
+        logger.warning("student_delete_failed", student_id=student_id, error_code=code, error=str(exc))
+        if code == "UserNotFoundException":
+            raise HTTPException(status_code=404, detail="Student not found.")
+        raise HTTPException(status_code=400, detail=f"Could not delete student ({code}).")
 
 
 @router.post("/students/{student_id}/reset-password")

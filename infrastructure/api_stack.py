@@ -226,6 +226,7 @@ class TeachingAgentAPIStack(Stack):
                     "cognito-idp:AdminUpdateUserAttributes",
                     "cognito-idp:AdminDisableUser",
                     "cognito-idp:AdminEnableUser",
+                    "cognito-idp:AdminDeleteUser",
                     "cognito-idp:AdminResetUserPassword",
                     "cognito-idp:ListUsers",
                     "cognito-idp:DescribeUserPool",

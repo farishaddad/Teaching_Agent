@@ -78,6 +78,14 @@ export function disableStudent(studentId: string) {
   return adminFetch(`/students/${studentId}/disable`, { method: 'POST' });
 }
 
+export function enableStudent(studentId: string) {
+  return adminFetch(`/students/${studentId}/enable`, { method: 'POST' });
+}
+
+export function deleteStudent(studentId: string) {
+  return adminFetch(`/students/${studentId}`, { method: 'DELETE' });
+}
+
 export function resetPassword(studentId: string) {
   return adminFetch(`/students/${studentId}/reset-password`, { method: 'POST' });
 }

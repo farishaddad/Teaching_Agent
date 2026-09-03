@@ -4,7 +4,14 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listStudents, createStudent, disableStudent, resetPassword } from '../../api/admin';
+import {
+  listStudents,
+  createStudent,
+  disableStudent,
+  enableStudent,
+  deleteStudent,
+  resetPassword,
+} from '../../api/admin';
 import CreateStudentModal from './CreateStudentModal';
 import StudentProgressModal from './StudentProgressModal';
 
@@ -36,6 +43,19 @@ export default function StudentList() {
   const disableMutation = useMutation({
     mutationFn: disableStudent,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-students'] }),
+    onError: (err: Error) => alert(`Disable failed: ${err.message}`),
+  });
+
+  const enableMutation = useMutation({
+    mutationFn: enableStudent,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-students'] }),
+    onError: (err: Error) => alert(`Enable failed: ${err.message}`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteStudent,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-students'] }),
+    onError: (err: Error) => alert(`Delete failed: ${err.message}`),
   });
 
   const resetMutation = useMutation({
@@ -161,16 +181,39 @@ export default function StudentList() {
                       >
                         Reset PW
                       </button>
+                      {student.enabled ? (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Disable ${student.first_name}'s account?`)) {
+                              disableMutation.mutate(student.student_id);
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-800 text-xs font-medium"
+                        >
+                          Disable
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => enableMutation.mutate(student.student_id)}
+                          className="text-green-600 hover:text-green-800 text-xs font-medium"
+                        >
+                          Enable
+                        </button>
+                      )}
                       <button
                         onClick={() => {
-                          if (confirm(`Disable ${student.first_name}'s account?`)) {
-                            disableMutation.mutate(student.student_id);
+                          if (
+                            confirm(
+                              `Permanently delete ${student.first_name} ${student.last_name} (${student.email})?\n\n` +
+                              `This removes their login account and cannot be undone.`
+                            )
+                          ) {
+                            deleteMutation.mutate(student.student_id);
                           }
                         }}
                         className="text-red-600 hover:text-red-800 text-xs font-medium"
-                        disabled={!student.enabled}
                       >
-                        Disable
+                        Delete
                       </button>
                     </div>
                   </td>
