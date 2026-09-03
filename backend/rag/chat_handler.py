@@ -317,10 +317,11 @@ def _call_converse(messages: list[dict], student_id: str) -> dict:
         "modelId": MODEL_ARN,
         "messages": messages,
         "system": [{"text": CONVERSE_SYSTEM_PROMPT}],
+        # Only set temperature (low, for factual grounding). Newer Claude
+        # models reject specifying both temperature and topP in Converse.
         "inferenceConfig": {
             "maxTokens": 1024,
             "temperature": 0.2,
-            "topP": 0.9,
         },
     }
 
@@ -340,10 +341,11 @@ def _call_converse_stream(messages: list[dict], student_id: str) -> dict:
         "modelId": MODEL_ARN,
         "messages": messages,
         "system": [{"text": CONVERSE_SYSTEM_PROMPT}],
+        # Only set temperature — newer Claude models reject temperature+topP
+        # together in Converse.
         "inferenceConfig": {
             "maxTokens": 1024,
             "temperature": 0.2,
-            "topP": 0.9,
         },
     }
 

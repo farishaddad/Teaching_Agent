@@ -18,6 +18,12 @@ from aws_cdk import (
 from constructs import Construct
 import jsii
 
+# Generation model for student chat (Bedrock Converse). Claude 3.5 Sonnet
+# (the original project default) is no longer available; this is the current
+# ACTIVE Sonnet on the account. eu-west-2 has no on-demand throughput for the
+# base model, so we use the EU cross-region inference profile ("eu." prefix).
+BEDROCK_MODEL_ID = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
 
 @jsii.implements(ILocalBundling)
 class LocalPipBundling:
@@ -178,6 +184,11 @@ class TeachingAgentAPIStack(Stack):
                 "BEDROCK_KB_ID": knowledge_base_id,
                 "BEDROCK_GUARDRAIL_ID": guardrail_id,
                 "BEDROCK_GUARDRAIL_VERSION": "1",
+                # Generation model for chat. Must be an ACTIVE model; older
+                # Claude 3.x models are now Legacy and return
+                # ResourceNotFoundException on Converse. eu-west-2 requires a
+                # cross-region inference profile (the "eu." prefix).
+                "BEDROCK_MODEL_ARN": BEDROCK_MODEL_ID,
                 "TRACKING_TABLE_NAME": tracking_table.table_name,
                 "TUTORIAL_DIR": "tutorial",
                 # Public frontend origin allowed by CORS (read by main.py's

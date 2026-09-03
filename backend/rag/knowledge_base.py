@@ -28,7 +28,11 @@ logger = structlog.get_logger()
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 KNOWLEDGE_BASE_ID: str = os.environ.get("BEDROCK_KB_ID", "") or os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID", "")
-MODEL_ARN: str = os.environ.get("BEDROCK_MODEL_ARN", "arn:aws:bedrock:eu-west-2::foundation-model/anthropic.claude-3-haiku-20240307-v1:0")
+# Default generation model. Older Claude 3.x models are now Legacy on Bedrock
+# and return ResourceNotFoundException on Converse, so default to the current
+# ACTIVE Sonnet via the EU cross-region inference profile. Overridden by the
+# BEDROCK_MODEL_ARN env var set in the API stack.
+MODEL_ARN: str = os.environ.get("BEDROCK_MODEL_ARN", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0")
 BEDROCK_REGION: str = os.environ.get("BEDROCK_REGION", "eu-west-2")
 GUARDRAIL_ID: str = os.environ.get("BEDROCK_GUARDRAIL_ID", "")
 GUARDRAIL_VERSION: str = os.environ.get("BEDROCK_GUARDRAIL_VERSION", "DRAFT")
@@ -111,10 +115,11 @@ def retrieve_and_generate(
                 )
             },
             "inferenceConfig": {
+                # Only temperature (low, for factual grounding). Newer Claude
+                # models reject temperature and topP together.
                 "textInferenceConfig": {
                     "maxTokens": 1024,
-                    "temperature": 0.2,   # Low temp for factual grounding
-                    "topP": 0.9,
+                    "temperature": 0.2,
                 }
             },
         },
