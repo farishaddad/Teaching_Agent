@@ -23,8 +23,8 @@ With RAG:     Student asks → Retrieve relevant course docs → LLM answers fro
 ┌────────────────────────────────────────────────────────────┐
 │                    INGESTION (One-time setup)               │
 │                                                            │
-│  Course PDFs/Slides → S3 Bucket → Bedrock KB ingests:     │
-│    1. Chunk documents into passages (300-500 tokens each)  │
+│  Course PDFs/Slides → S3 Bucket → Bedrock KB ingests:      │
+│    1. Chunk documents into passages                        │
 │    2. Generate embeddings (Titan Embeddings v2)            │
 │    3. Store in OpenSearch Serverless vector index          │
 └────────────────────────────────────────────────────────────┘
@@ -34,7 +34,7 @@ With RAG:     Student asks → Retrieve relevant course docs → LLM answers fro
 │                                                            │
 │  Student: "What is tool use in AI agents?"                 │
 │    1. Embed the question                                   │
-│    2. Vector search: find top-5 most similar chunks        │
+│    2. Vector search: find the most similar chunks          │
 │    3. Pass chunks + question to Claude                     │
 │    4. Claude synthesizes an answer FROM those chunks       │
 │    5. Return answer + source citations                     │
@@ -43,175 +43,152 @@ With RAG:     Student asks → Retrieve relevant course docs → LLM answers fro
 
 ---
 
-## Step 1: Prepare Course Materials
+## How the KB fits our stack (important)
 
-Upload your materials to S3. Supported formats:
-- PDF (slides exported as PDF work great)
-- TXT, MD (plain text notes)
-- DOCX (Word documents)
-- HTML (web-based materials)
+The `TeachingAgentRAG` CDK stack creates **only the S3 materials bucket**. The Knowledge Base + OpenSearch Serverless collection are created **out-of-band** (Bedrock console or `scripts/create_kb.sh`), because Bedrock's console flow handles the fiddly AOSS index/permission setup for you.
+
+So how does the Lambda learn the KB's ID? Through **SSM Parameter Store**:
 
 ```
-course_materials/
-├── Module_01_Introduction_to_Agents.pdf
-├── Module_02_LLM_Foundations.pdf
-├── Module_03_Prompt_Engineering.pdf
-├── ...
-├── Module_16_Building_on_AWS.pdf
-└── supplementary/
-    ├── reading_list.md
-    └── glossary.md
+create KB (console or scripts/create_kb.sh)
+        │  the script writes the KB ID to SSM:
+        │  /teaching-agent/{env}/bedrock-kb-id
+        ▼
+CDK synth reads it: ssm.StringParameter.value_from_lookup(...)   (in app.py)
+        │  stamps the literal ID into the API stack template
+        ▼
+Lambda env var  BEDROCK_KB_ID = <real KB id>
+        │
+        ▼
+backend/rag/knowledge_base.py reads BEDROCK_KB_ID at runtime
 ```
 
-**Chunking Strategy Tips:**
-- Default chunking (300 tokens, 20% overlap) works well for slide decks
-- For dense technical docs, increase to 500 tokens
-- Keep logical sections together where possible
-- Include headings in chunks for better retrieval context
+`value_from_lookup` embeds the resolved ID as a literal into the synthesized template (so there's no CloudFormation drift), and it's bootstrap-safe: before the parameter exists, it resolves to an empty string and RAG degrades gracefully instead of blocking the deploy. See [Chapter 6](./06-deployment.md) for the full flow.
 
 ---
 
-## Step 2: CDK — Create the Knowledge Base
+## Step 1: Prepare Course Materials
+
+Upload your materials to the S3 bucket the RAG stack creates. Supported formats: PDF, TXT, MD, DOCX, HTML.
+
+```
+course_materials/
+├── module_01_...md / .pdf
+├── module_02_...md / .pdf
+├── ...
+└── references/ , guides/ , ...
+```
+
+`scripts/upload_to_s3.sh` handles uploading the course tree (and can convert slide decks to PDF for better chunking).
+
+**Chunking tips:** fixed-size chunks around 500 tokens with ~20% overlap work well for slide decks. Overlap matters — without it, a concept split across two chunks leaves neither chunk with the full explanation.
+
+---
+
+## Step 2: CDK — The Materials Bucket (KB created out-of-band)
 
 ```python
-# infrastructure/rag_stack.py (key parts)
+# infrastructure/rag_stack.py (the whole stack, essentially)
 
 class TeachingAgentRAGStack(Stack):
     def __init__(self, scope, construct_id, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
 
-        # S3 bucket for course materials
+        # S3 bucket for course materials (account-suffixed for global uniqueness)
         self.materials_bucket = s3.Bucket(
             self, "CourseMaterials",
-            bucket_name="teaching-agent-course-materials",
+            bucket_name="teaching-agent-materials-062788795053",
+            versioned=True,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
             removal_policy=RemovalPolicy.RETAIN,
+            auto_delete_objects=False,
         )
 
-        # OpenSearch Serverless collection (vector store)
-        # Bedrock KB manages this for you — but you can customize
+        # The Bedrock KB itself is NOT created here — see the NextStep output.
+        self.knowledge_base_id = ""   # populated at runtime via SSM, not CDK
 
-        # Bedrock Knowledge Base
-        # Note: As of 2026, KB creation is best done via console or 
-        # aws bedrock-agent create-knowledge-base CLI
-        # CDK support via CfnKnowledgeBase
-
-        # Data source: S3 bucket → KB
-        # Configured to re-sync when materials are updated
+        CfnOutput(self, "NextStep", value=(
+            "Create the Bedrock KB (console or scripts/create_kb.sh) pointing "
+            "to this S3 bucket, store the KB ID in SSM at "
+            "/teaching-agent/{env}/bedrock-kb-id, then run: cdk deploy TeachingAgentAPI"
+        ))
 ```
 
-**Console Setup (Recommended for First Time):**
-1. Bedrock Console → Knowledge Bases → Create
-2. Data source: S3 bucket with your course PDFs
+**Console/script setup:**
+1. Bedrock Console → Knowledge Bases → Create (or run `scripts/create_kb.sh`)
+2. Data source: the `teaching-agent-materials-<account>` S3 bucket
 3. Embeddings: Amazon Titan Embeddings V2
 4. Vector store: OpenSearch Serverless (auto-created)
-5. Chunking: Fixed size, 500 tokens, 20% overlap
+5. Chunking: Fixed size, ~500 tokens, 20% overlap
 6. Sync the data source → ingestion starts
+7. **Store the KB ID in SSM** (`create_kb.sh` does this automatically) and redeploy `TeachingAgentAPI`
 
 ---
 
 ## Step 3: System Prompt Design
 
-The system prompt constrains the agent's behavior:
-
-```python
-SYSTEM_PROMPT = """You are an expert teaching assistant for an Agentic AI course.
-
-ROLE:
-- Answer student questions grounded in the provided course materials
-- Explain concepts clearly with relevant examples
-- Reference specific modules/slides when applicable
-- Encourage deeper exploration
-
-RULES:
-- ONLY provide information supported by the retrieved course materials
-- If no relevant material is found, say "I don't have information on that 
-  in the course materials" — never guess
-- Never make up citations or references
-- Be encouraging — students are learning
-- Keep answers concise unless asked for detail
-
-COURSE: Introduction to Agentic AI
-MODULES: 16 (from Agent Fundamentals to Building on AWS)
-"""
-```
-
-**Why this matters:** The system prompt is your first guardrail. It establishes the agent's identity and constraints before Bedrock Guardrails add the enforcement layer.
+The system prompt (in `backend/rag/prompt_templates.py`) constrains the agent's behavior — establishing its identity and grounding rules before Bedrock Guardrails add enforcement. It instructs the model to answer only from retrieved course materials, decline when nothing relevant is found, and cite sources inline as `[Source: filename]`.
 
 ---
 
-## Step 4: RetrieveAndGenerate API Call
+## Step 4: Two Retrieval Modes
+
+`backend/rag/knowledge_base.py` supports **two** paths:
+
+**A) `retrieve_and_generate`** — one Bedrock call that retrieves and generates together. Simple; used for straightforward Q&A.
 
 ```python
-# backend/rag/knowledge_base.py
+# Uses the ManagedSearchConfiguration shape for a managed KB.
+kb_config = {
+    "knowledgeBaseId": KNOWLEDGE_BASE_ID,
+    "modelArn": MODEL_ARN,
+    "generationConfiguration": {
+        "promptTemplate": {"textPromptTemplate": "...$search_results$...$query$..."},
+        "inferenceConfig": {"textInferenceConfig": {
+            "maxTokens": 1024, "temperature": 0.2, "topP": 0.9,
+        }},
+    },
+    "retrievalConfiguration": {
+        "managedSearchConfiguration": {"numberOfResults": 5},
+    },
+}
+# If a guardrail is configured, it's attached here:
+if GUARDRAIL_ID:
+    kb_config["generationConfiguration"]["guardrailConfiguration"] = {
+        "guardrailId": GUARDRAIL_ID, "guardrailVersion": GUARDRAIL_VERSION,
+    }
 
-def retrieve_and_generate(query: str, student_id: str) -> dict:
-    """Ask a question, get a grounded answer with citations."""
-    
-    response = bedrock_agent_runtime.retrieve_and_generate(
-        input={"text": query},
-        retrieveAndGenerateConfiguration={
-            "type": "KNOWLEDGE_BASE",
-            "knowledgeBaseConfiguration": {
-                "knowledgeBaseId": KNOWLEDGE_BASE_ID,
-                "modelArn": MODEL_ARN,  # Claude 3.5 Sonnet
-                "generationConfiguration": {
-                    "promptTemplate": {
-                        "textPromptTemplate": (
-                            SYSTEM_PROMPT + 
-                            "\n\nContext:\n$search_results$\n\n"
-                            "Student question: $query$"
-                        )
-                    }
-                },
-                "retrievalConfiguration": {
-                    "vectorSearchConfiguration": {
-                        "numberOfResults": 5,  # Top 5 chunks
-                    }
-                },
-            },
-        },
-    )
-    
-    # Extract answer and citations
-    answer = response["output"]["text"]
-    citations = extract_citations(response.get("citations", []))
-    
-    return {"answer": answer, "sources": citations}
+response = bedrock_agent_runtime.retrieve_and_generate(
+    input={"text": query},
+    retrieveAndGenerateConfiguration={
+        "type": "KNOWLEDGE_BASE",
+        "knowledgeBaseConfiguration": kb_config,
+    },
+    # sessionId carries conversation continuity across turns
+)
 ```
+
+**B) `retrieve` + Converse** — `retrieve()` returns raw chunks only (no `retrievalConfiguration` — the managed KB uses its own defaults), and `chat_handler` then formats them into a **Converse** API call with guardrails and conversation history applied explicitly. This is the preferred path for guardrail transparency and multi-turn control.
+
+> **Configuration reality:**
+> - The KB ID comes from `os.environ["BEDROCK_KB_ID"]`, with a fallback to `BEDROCK_KNOWLEDGE_BASE_ID`.
+> - `MODEL_ARN` **defaults to Claude 3 Haiku** (`anthropic.claude-3-haiku-20240307-v1:0`) for cost — override via the `BEDROCK_MODEL_ARN` env var (e.g. to a Claude 3.5 Sonnet ARN) if you want higher quality. The project's stated target model is Sonnet; the code default is Haiku, so set the env var accordingly for production.
+> - If `BEDROCK_KB_ID` is empty (KB not yet created / SSM param unset), retrieval logs `knowledge_base_id_not_configured` and returns a safe fallback instead of erroring.
 
 ---
 
 ## Step 5: Handling Citations
 
-Students need to know WHERE the answer came from:
+Students need to know WHERE the answer came from. The code turns Bedrock's citation format into readable source references (filename + excerpt) pulled from each retrieved reference's `s3Location`. The frontend then shows something like:
 
-```python
-def extract_citations(citations: list) -> list[dict]:
-    """Turn Bedrock citation format into readable source references."""
-    sources = []
-    for citation in citations:
-        for ref in citation.get("retrievedReferences", []):
-            uri = ref["location"]["s3Location"]["uri"]
-            filename = uri.split("/")[-1]  # "Module_03_Prompt_Engineering.pdf"
-            excerpt = ref["content"]["text"][:200]
-            
-            sources.append({
-                "source": filename,
-                "excerpt": excerpt,
-            })
-    return sources
-```
-
-The frontend can then display:
 > "RAG stands for Retrieval-Augmented Generation..."
-> 
-> 📚 *Sources: Module_03_Prompt_Engineering.pdf, Module_07_RAG.pdf*
+>
+> 📚 *Sources: module_03_prompt_engineering.md, module_07_rag.md*
 
 ---
 
 ## Chunking Deep Dive
-
-How you chunk documents dramatically affects retrieval quality:
 
 | Strategy | Chunk Size | Best For |
 |----------|-----------|----------|
@@ -220,49 +197,17 @@ How you chunk documents dramatically affects retrieval quality:
 | Large (1000 tokens) | More context | Complex explanations |
 | Semantic | Variable | Documents with clear sections |
 
-**Our choice**: 500 tokens with 20% overlap — balances precision with enough context for Claude to synthesize good answers.
-
-**Overlap matters**: Without overlap, if a concept spans two chunks, neither chunk has the full explanation. 20% overlap means the end of chunk N appears at the start of chunk N+1.
-
----
-
-## Testing RAG Quality
-
-```python
-# Manual evaluation checklist
-
-TEST_QUESTIONS = [
-    # Should return grounded answer from Module 1
-    ("What is an AI agent?", "Module_01"),
-    
-    # Should cite RAG module specifically
-    ("How does RAG prevent hallucination?", "Module_07"),
-    
-    # Should gracefully decline — not in course materials
-    ("What is the best pizza in London?", None),
-    
-    # Should synthesize across multiple modules
-    ("How do guardrails relate to agent safety?", "Module_09"),
-]
-
-for question, expected_source in TEST_QUESTIONS:
-    result = retrieve_and_generate(question, student_id="test")
-    print(f"Q: {question}")
-    print(f"A: {result['answer'][:200]}...")
-    print(f"Sources: {[s['source'] for s in result['sources']]}")
-    print(f"Expected source present: {expected_source in str(result['sources'])}")
-    print("---")
-```
+**Overlap matters**: 20% overlap means the end of chunk N appears at the start of chunk N+1, so concepts spanning a boundary aren't lost. Because the KB is created out-of-band, these settings are chosen at KB-creation time (console/script), not in CDK.
 
 ---
 
 ## Common Pitfalls
 
-1. **Stale index**: Updated PDFs but forgot to re-sync the data source
-2. **Poor chunking**: Chunks that split concepts mid-sentence
-3. **No fallback**: Agent tries to answer even when retrieval finds nothing relevant
-4. **Citation mismatch**: Displaying citations from irrelevant retrieved chunks
-5. **Prompt leakage**: System prompt visible if student asks "what are your instructions?"
+1. **KB ID not in SSM**: created the KB but forgot to store its ID at `/teaching-agent/{env}/bedrock-kb-id`, so `BEDROCK_KB_ID` is empty and RAG silently degrades.
+2. **Stale index**: updated materials but forgot to re-sync the data source.
+3. **Poor chunking**: chunks that split concepts mid-sentence.
+4. **No fallback**: agent tries to answer even when retrieval finds nothing relevant (handled here by `FALLBACK_RESPONSE`).
+5. **Wrong model expectation**: assuming Sonnet when the env defaults to Haiku.
 
 ---
 

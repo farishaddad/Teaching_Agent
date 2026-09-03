@@ -78,7 +78,10 @@ TOOLS = [
     }
 ]
 
-# Use in Converse API call
+# Use in Converse API call.
+# MODEL_ID comes from BEDROCK_MODEL_ARN — the code defaults to Claude 3 Haiku;
+# tool use / agentic reasoning benefits from a stronger model (e.g. Claude 3.5
+# Sonnet), so set BEDROCK_MODEL_ARN accordingly for these features.
 response = bedrock.converse(
     modelId=MODEL_ID,
     messages=messages,
@@ -284,7 +287,7 @@ You've completed the tutorial. You now understand how to build a production-grad
 - ✅ Grounded Q&A (Bedrock Knowledge Bases + RAG)
 - ✅ Comprehensive guardrails (topic denial, content filtering, PII, grounding)
 - ✅ Student tracking and weakness analysis (DynamoDB)
-- ✅ Full AWS deployment (CDK, Lambda, API Gateway, CloudFront)
+- ✅ Full AWS deployment (CDK — six stacks: Auth, RAG, Guardrails, Tracking, API, and the CloudFront + S3 frontend from [Chapter 6](./06-deployment.md))
 - ✅ Extension patterns (tools, multi-agent, evaluation)
 
 **What to build next**: Take these patterns and apply them to your own domain. The architecture is the same whether you're building a customer service agent, a code review agent, or a research assistant — swap the knowledge base, adjust the guardrails, and you have a new agent.

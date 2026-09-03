@@ -3,10 +3,11 @@
 ## What You'll Build
 
 A secure student login system using Amazon Cognito that:
-- Lets students sign up/in with email + password
-- Issues JWTs stored in httpOnly cookies (not localStorage)
-- Protects all API endpoints — no valid token = no access
-- Separates students from instructors via Cognito groups
+- Lets students sign in on the Cognito **hosted UI** (instructors create the accounts — no self-signup)
+- Uses the **authorization-code + PKCE** flow; the backend performs the code exchange
+- Issues JWTs stored in **httpOnly cookies** (not localStorage)
+- Verifies the JWT **inside the Lambda** on every API call (there is no API Gateway authorizer)
+- Separates students from instructors via Cognito **groups**
 
 ---
 
@@ -15,8 +16,8 @@ A secure student login system using Amazon Cognito that:
 | Concept | What It Is |
 |---------|-----------|
 | **User Pool** | A user directory — stores usernames, passwords, attributes |
-| **App Client** | Your application's credentials to interact with the User Pool |
-| **Hosted UI** | Pre-built login/signup page from Cognito (no custom form needed) |
+| **App Client** | Your application's identity to interact with the User Pool (public, no secret) |
+| **Hosted UI** | Pre-built login page from Cognito (no custom form needed) |
 | **JWT** | JSON Web Token — signed proof of identity, verified without calling Cognito |
 | **PKCE** | Proof Key for Code Exchange — prevents authorization code interception |
 | **Groups** | Role-based access control — `students`, `instructors` |
@@ -26,202 +27,201 @@ A secure student login system using Amazon Cognito that:
 ## Step 1: CDK — Create the Cognito User Pool
 
 ```python
-# infrastructure/auth_stack.py
+# infrastructure/auth_stack.py (abridged — matches the deployed config)
 
-from aws_cdk import (
-    Stack,
-    Duration,
-    RemovalPolicy,
-    aws_cognito as cognito,
+self.user_pool = cognito.UserPool(
+    self, "TeachingAgentUserPool",
+    user_pool_name="teaching-agent-user-pool",
+    self_sign_up_enabled=False,                 # instructors create accounts
+    sign_in_aliases=cognito.SignInAliases(email=True, username=False),
+    sign_in_case_sensitive=False,
+    auto_verify=cognito.AutoVerifiedAttrs(email=True),
+    standard_attributes=cognito.StandardAttributes(
+        email=cognito.StandardAttribute(required=True, mutable=True),
+        given_name=cognito.StandardAttribute(required=True, mutable=True),
+        family_name=cognito.StandardAttribute(required=True, mutable=True),
+    ),
+    custom_attributes={
+        "cohort": cognito.StringAttribute(min_len=1, max_len=50, mutable=True),
+        "enrollment_date": cognito.StringAttribute(min_len=10, max_len=10, mutable=True),
+    },
+    password_policy=cognito.PasswordPolicy(
+        min_length=10,
+        require_lowercase=True,
+        require_uppercase=True,
+        require_digits=True,
+        require_symbols=True,
+        temp_password_validity=cdk.Duration.days(7),
+    ),
+    account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+    mfa=cognito.Mfa.OPTIONAL,
+    mfa_second_factor=cognito.MfaSecondFactor(sms=False, otp=True),
+    email=cognito.UserPoolEmail.with_cognito(),
 )
-from constructs import Construct
-
-
-class TeachingAgentAuthStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs):
-        super().__init__(scope, construct_id, **kwargs)
-
-        # User Pool — the identity store
-        self.user_pool = cognito.UserPool(
-            self, "StudentPool",
-            user_pool_name="teaching-agent-students",
-            
-            # Sign-in with email
-            sign_in_aliases=cognito.SignInAliases(email=True),
-            
-            # Self sign-up disabled — instructor creates accounts
-            self_sign_up_enabled=False,
-            
-            # Password policy
-            password_policy=cognito.PasswordPolicy(
-                min_length=8,
-                require_lowercase=True,
-                require_uppercase=True,
-                require_digits=True,
-                require_symbols=False,
-            ),
-            
-            # Custom attributes for course tracking
-            custom_attributes={
-                "cohort": cognito.StringAttribute(mutable=True),
-                "enrollment_date": cognito.StringAttribute(mutable=False),
-            },
-            
-            # Account recovery via email
-            account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
-            
-            removal_policy=RemovalPolicy.RETAIN,  # Don't delete users on stack removal
-        )
-
-        # App Client — how the frontend authenticates
-        self.app_client = self.user_pool.add_client(
-            "FrontendClient",
-            user_pool_client_name="teaching-agent-frontend",
-            
-            # Authorization Code flow with PKCE (most secure for SPAs)
-            auth_flows=cognito.AuthFlow(
-                user_password=False,  # Don't allow direct password auth
-                user_srp=True,
-            ),
-            
-            # OAuth settings
-            o_auth=cognito.OAuthSettings(
-                flows=cognito.OAuthFlows(authorization_code_grant=True),
-                scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-                callback_urls=["http://localhost:5173/callback", "https://yourdomain.com/callback"],
-                logout_urls=["http://localhost:5173/", "https://yourdomain.com/"],
-            ),
-            
-            # Token validity
-            access_token_validity=Duration.hours(1),
-            refresh_token_validity=Duration.days(30),
-            id_token_validity=Duration.hours(1),
-        )
-
-        # Groups for RBAC
-        cognito.CfnUserPoolGroup(
-            self, "InstructorsGroup",
-            group_name="instructors",
-            user_pool_id=self.user_pool.user_pool_id,
-            description="Course instructors with admin access",
-        )
-
-        cognito.CfnUserPoolGroup(
-            self, "StudentsGroup",
-            group_name="students",
-            user_pool_id=self.user_pool.user_pool_id,
-            description="Enrolled students",
-        )
 ```
+
+The app client is a **public PKCE client** (no secret) using the authorization-code flow only. Note that SRP and direct user-password auth are **disabled** — students always go through the hosted UI. `admin_user_password` is enabled only so accounts can be seeded/managed via the AWS SDK:
+
+```python
+self.app_client = self.user_pool.add_client(
+    "TeachingAgentAppClient",
+    user_pool_client_name="teaching-agent-web-client",
+    generate_secret=False,                       # public PKCE client
+    auth_flows=cognito.AuthFlow(
+        user_password=False,
+        user_srp=False,
+        admin_user_password=True,                # for admin SDK seeding only
+    ),
+    o_auth=cognito.OAuthSettings(
+        flows=cognito.OAuthFlows(
+            authorization_code_grant=True,
+            implicit_code_grant=False,
+        ),
+        scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
+        # Built from `frontend_origin` (passed in from app.py). The default
+        # frontend origin is the CloudFront URL; localhost is for dev.
+        callback_urls=[
+            "http://localhost:5173/auth/callback",
+            f"{frontend_origin}/auth/callback",
+        ],
+        logout_urls=[
+            "http://localhost:5173/",
+            f"{frontend_origin}/",
+        ],
+    ),
+    access_token_validity=cdk.Duration.hours(1),
+    id_token_validity=cdk.Duration.hours(1),
+    refresh_token_validity=cdk.Duration.days(30),
+    enable_token_revocation=True,                # logout revokes refresh tokens
+    prevent_user_existence_errors=True,
+)
+
+# Hosted UI domain: https://teaching-agent-auth.auth.<region>.amazoncognito.com
+self.domain = self.user_pool.add_domain(
+    "TeachingAgentDomain",
+    cognito_domain=cognito.CognitoDomainOptions(domain_prefix="teaching-agent-auth"),
+)
+
+# Groups for RBAC
+cognito.CfnUserPoolGroup(self, "InstructorsGroup", group_name="instructors",
+                         user_pool_id=self.user_pool.user_pool_id, precedence=1)
+cognito.CfnUserPoolGroup(self, "StudentsGroup", group_name="students",
+                         user_pool_id=self.user_pool.user_pool_id, precedence=10)
+```
+
+> **Callback URL gotcha:** the redirect URI is `/auth/callback` (not `/callback`), and it must **exactly** match the URI used both in the login redirect and in the token exchange. When you deploy the frontend to a new domain, pass it via `-c frontend_domain=<host>` so the callback/logout URLs are regenerated (see Chapter 6).
 
 ---
 
-## Step 2: JWT Verification in FastAPI
+## Step 2: JWT Verification in the Lambda
 
-When a student makes an API call, we need to verify their JWT is:
+When a request arrives, the backend verifies the JWT is:
 1. Signed by our Cognito User Pool (not forged)
 2. Not expired
 3. Issued for our App Client
 
 ```python
-# backend/auth/cognito.py
+# backend/auth/cognito.py (abridged)
 
-import jwt
-from jwt import PyJWKClient
-
-# Cognito publishes its public keys at this URL
-JWKS_URL = (
-    f"https://cognito-idp.{REGION}.amazonaws.com/"
-    f"{USER_POOL_ID}/.well-known/jwks.json"
+payload = pyjwt.decode(
+    token,
+    signing_key.key,                 # from Cognito JWKS
+    algorithms=["RS256"],
+    issuer=_ISSUER,                  # https://cognito-idp.<region>.amazonaws.com/<pool>
+    options={"verify_exp": True, "verify_aud": False, "verify_iss": True},
 )
+# Cognito ACCESS tokens don't carry `aud`; verify `client_id` instead.
+token_client = payload.get("client_id") or payload.get("aud")
+if COGNITO_APP_CLIENT_ID and token_client != COGNITO_APP_CLIENT_ID:
+    raise pyjwt.InvalidTokenError("Token client_id does not match app client")
 
-def verify_token(token: str) -> StudentUser:
-    """Verify JWT signature, expiry, and audience."""
-    
-    # 1. Fetch the public key that signed this token
-    jwks_client = PyJWKClient(JWKS_URL)
-    signing_key = jwks_client.get_signing_key_from_jwt(token)
-    
-    # 2. Decode and verify in one step
-    payload = jwt.decode(
-        token,
-        signing_key.key,
-        algorithms=["RS256"],
-        audience=APP_CLIENT_ID,       # Must match our app client
-        issuer=f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}",
-    )
-    
-    # 3. Extract student identity
-    return StudentUser(
-        id=payload["sub"],          # Unique, immutable student ID
-        email=payload["email"],
-        cohort=payload.get("custom:cohort"),
-    )
+groups = payload.get("cognito:groups", [])   # ["students"] or ["instructors"]
 ```
 
-**Why RS256?** Cognito signs tokens with RSA — we verify using the public key (from JWKS URL) without needing any secret. The key rotates automatically.
+**Why RS256 / JWKS?** Cognito signs tokens with RSA. We verify using the public key from the JWKS endpoint — no shared secret needed, and the key rotates automatically. The `PyJWKClient` caches keys in-process.
+
+> **Access-token nuance:** Cognito access tokens set `client_id` (not `aud`), so we disable `verify_aud` and check `client_id` explicitly. ID tokens use `aud` — this app authenticates with the access token.
 
 ---
 
-## Step 3: FastAPI Auth Middleware
+## Step 3: The In-Lambda Auth Middleware
+
+There is **no API Gateway Cognito Authorizer**. A FastAPI middleware runs on every request instead. Two things make it correct:
+
+1. **Public paths must be precise.** Only endpoints that genuinely have no session yet may bypass auth: `/api/auth/callback` (creates the session) and `/api/auth/refresh` (authenticates via the refresh-token cookie). Crucially, `/api/auth/me` and `/api/auth/logout` are **not** public — they need the verified user.
+2. **Silent refresh.** If the access token is expired but a valid `refresh_token` cookie exists, the middleware refreshes transparently and re-sets the cookies.
 
 ```python
-# backend/auth/middleware.py
+# backend/auth/middleware.py (abridged)
+
+PUBLIC_PATHS = frozenset({
+    "/health", "/docs", "/openapi.json", "/redoc",
+    "/api/auth/callback",   # public: no session yet — it CREATES one
+    "/api/auth/refresh",    # public: authenticates via the refresh_token cookie
+})
+PUBLIC_PREFIXES = ("/api/tutorial",)   # public course material
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        # Public paths skip auth
-        if request.url.path in {"/health", "/docs"}:
+        if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
-        
-        # Extract token from httpOnly cookie (preferred) or header
-        token = request.cookies.get("access_token")
+        if request.url.path.startswith(PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        token = self._extract_token(request)          # cookie, then Bearer
         if not token:
-            auth_header = request.headers.get("Authorization", "")
-            token = auth_header.removeprefix("Bearer ")
-        
-        if not token:
-            return JSONResponse(status_code=401, content={"detail": "Auth required"})
-        
-        # Verify and attach user context
+            return self._unauthorized("Authentication required. Please log in.")
+
         try:
             student = verify_token(token)
-            request.state.current_user = student
-        except Exception:
-            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
-        
-        return await call_next(request)
+        except pyjwt.ExpiredSignatureError:
+            student, new_tokens = await self._try_refresh(request)   # refresh_token cookie
+            if student is None:
+                return self._unauthorized("Session expired.", clear_cookies=True)
+        except pyjwt.InvalidTokenError:
+            return self._unauthorized("Invalid token. Please log in again.")
+
+        request.state.current_user = student
+        response = await call_next(request)
+        if new_tokens:
+            self._set_auth_cookies(response, new_tokens)   # refreshed cookies
+        return response
 ```
 
-Now every route handler can access `request.state.current_user` — guaranteed to be verified.
+> ⚠️ **A real bug we hit:** the public list was once the broad prefix `"/api/auth/"`, which accidentally made `/api/auth/me` bypass the middleware. That route then never had `request.state.current_user`, so it always returned `401` — and since the SPA calls `/api/auth/me` to rehydrate the session, a *successfully logged-in* user got bounced straight back to the login page. The fix was to make only `/api/auth/callback` and `/api/auth/refresh` public. Precise public paths matter.
 
 ---
 
-## Step 4: Frontend — Cognito Hosted UI Flow
+## Step 4: The Login Flow (PKCE, backend-mediated)
 
 ```
 Student clicks "Login"
-        │
+        │  SPA generates a PKCE verifier + challenge (crypto.subtle),
+        │  stores the verifier in sessionStorage
         ▼
 Redirect to Cognito Hosted UI
-(https://your-domain.auth.eu-west-2.amazoncognito.com/login)
+(https://teaching-agent-auth.auth.<region>.amazoncognito.com/oauth2/authorize?...)
         │
         ▼
-Student enters email + password
+Student signs in
         │
         ▼
-Cognito redirects back with authorization code
-(http://localhost:5173/callback?code=xyz)
+Cognito redirects back with an authorization code
+(https://<cloudfront>/auth/callback?code=xyz)
         │
         ▼
-Frontend exchanges code for tokens (PKCE)
+SPA POSTs {code, code_verifier, redirect_uri} to /api/auth/callback
         │
         ▼
-Backend sets tokens in httpOnly cookies
+Backend exchanges the code at Cognito's /oauth2/token endpoint,
+verifies the returned access token, and sets httpOnly cookies:
+  access_token (path /), id_token (path /), refresh_token (path /api/auth)
         │
         ▼
-Authenticated! All API calls include cookie automatically.
+Authenticated! Every API call carries the cookies automatically (same origin).
 ```
+
+The backend keeps the code-exchange server-side and the tokens in httpOnly cookies, so raw JWTs never touch JavaScript or the URL. The route also exposes `/api/auth/me` (rehydrate session), `/api/auth/logout` (clear cookies + revoke refresh token), and `/api/auth/refresh`.
 
 ---
 
@@ -229,18 +229,19 @@ Authenticated! All API calls include cookie automatically.
 
 ### ✅ Do This
 - Store tokens in **httpOnly** cookies (inaccessible to JavaScript = no XSS theft)
-- Use **PKCE** flow (prevents authorization code interception)
-- Set **short** access token lifetime (1 hour)
-- Use **Secure** + **SameSite=Strict** cookie attributes
+- Use **PKCE** (prevents authorization-code interception) with a backend code exchange
+- Keep access-token lifetime **short** (1 hour) and rely on silent refresh
+- Use **Secure** + **SameSite=Lax** cookie attributes (the SPA and API are same-origin via CloudFront)
 - Let Cognito handle password hashing and storage
-- Disable self-sign-up (instructor creates accounts)
+- Disable self-signup (instructors create accounts)
+- Keep public paths **precise** — never blanket-exempt a whole `/api/auth/` prefix
 
 ### ❌ Don't Do This
 - Store tokens in localStorage (XSS = stolen tokens)
 - Use implicit flow (tokens in URL = logged in browser history)
 - Build custom password storage (you will get it wrong)
 - Hard-code Cognito credentials in frontend code
-- Skip token expiry verification
+- Skip token-expiry verification
 
 ---
 
@@ -250,21 +251,21 @@ Authenticated! All API calls include cookie automatically.
 # tests/test_auth.py
 
 def test_missing_token_returns_401(client):
-    """Unauthenticated requests are rejected."""
     response = client.get("/api/chat")
     assert response.status_code == 401
 
 def test_invalid_token_returns_401(client):
-    """Malformed tokens are rejected."""
     response = client.get("/api/chat", cookies={"access_token": "not.a.real.jwt"})
     assert response.status_code == 401
 
+def test_me_requires_auth(client):
+    # /api/auth/me is NOT public — it must reject unauthenticated callers.
+    assert client.get("/api/auth/me").status_code == 401
+
 def test_valid_token_passes(client, valid_jwt):
-    """Valid JWT grants access and populates current_user."""
     response = client.post("/api/chat",
         json={"message": "What is RAG?"},
-        cookies={"access_token": valid_jwt}
-    )
+        cookies={"access_token": valid_jwt})
     assert response.status_code == 200
 ```
 
@@ -272,4 +273,4 @@ def test_valid_token_passes(client, valid_jwt):
 
 ## Next Chapter
 
-In [Chapter 3: RAG Pipeline](./03-rag-pipeline.md), we'll build the knowledge retrieval system that grounds the agent's answers in your course materials.
+In [Chapter 3: RAG Pipeline](./03-rag-pipeline.md), we'll build the knowledge retrieval system that grounds the agent's answers in your course materials — and see how the Knowledge Base ID reaches the Lambda via SSM.
