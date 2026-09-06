@@ -26,6 +26,8 @@ frontend/dist/
 # AWS
 cdk.out/
 .cdk.staging/
+# CDK context cache — regenerated at synth; embeds the account id in lookup keys.
+cdk.context.json
 
 # OS
 .DS_Store
@@ -40,3 +42,9 @@ htmlcov/
 *.log
 lambda_package/
 lambda.zip
+
+# Course materials — private content (decks, PDFs, guides). NOT committed.
+# Supply these locally; they are uploaded to S3 for Knowledge Base ingestion.
+# The explanatory README is kept tracked (negated below).
+course_materials/*
+!course_materials/README.md

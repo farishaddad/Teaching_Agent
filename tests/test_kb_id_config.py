@@ -53,7 +53,7 @@ API_LAMBDA_FUNCTION_NAME = "teaching-agent-api"
 
 # Project account/region wired in infrastructure/app.py — the fixed app resolves
 # the KB ID from an SSM parameter scoped to this account/region.
-CDK_ACCOUNT = "062788795053"
+CDK_ACCOUNT = "123456789012"
 CDK_REGION = "eu-west-2"
 
 _PROJECT_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -207,7 +207,7 @@ def _synth_api_template(monkeypatch: pytest.MonkeyPatch) -> Template:
     _stub_local_bundling(monkeypatch)
 
     app = cdk.App()
-    env = cdk.Environment(account="062788795053", region="eu-west-2")
+    env = cdk.Environment(account="123456789012", region="eu-west-2")
 
     auth_stack = TeachingAgentAuthStack(app, "TeachingAgentAuth", env=env)
     guardrails_stack = TeachingAgentGuardrailsStack(
@@ -428,7 +428,7 @@ TOKEN_ENV_VARS = (
     "BEDROCK_GUARDRAIL_ID",
 )
 
-MATERIALS_BUCKET_NAME = "teaching-agent-materials-062788795053"
+MATERIALS_BUCKET_NAME = "teaching-agent-materials-123456789012"
 
 SIBLING_STACK_IDS = (
     "TeachingAgentAuth",
@@ -466,7 +466,7 @@ def _synth_all_stacks(monkeypatch: pytest.MonkeyPatch) -> dict:
     _stub_local_bundling(monkeypatch)
 
     app = cdk.App()
-    env = cdk.Environment(account="062788795053", region="eu-west-2")
+    env = cdk.Environment(account="123456789012", region="eu-west-2")
 
     auth_stack = TeachingAgentAuthStack(app, "TeachingAgentAuth", env=env)
     guardrails_stack = TeachingAgentGuardrailsStack(
@@ -702,7 +702,7 @@ class TestPreservationRagMaterialsBucket:
         """Named bucket with versioning Enabled and AES256 (S3-managed) SSE."""
         _stub_local_bundling(monkeypatch)
         app = cdk.App()
-        env = cdk.Environment(account="062788795053", region="eu-west-2")
+        env = cdk.Environment(account="123456789012", region="eu-west-2")
         rag_stack = TeachingAgentRAGStack(app, "TeachingAgentRAG", env=env)
         template = Template.from_stack(rag_stack)
 
@@ -725,7 +725,7 @@ class TestPreservationRagMaterialsBucket:
         """RETAIN is expressed as DeletionPolicy/UpdateReplacePolicy = Retain."""
         _stub_local_bundling(monkeypatch)
         app = cdk.App()
-        env = cdk.Environment(account="062788795053", region="eu-west-2")
+        env = cdk.Environment(account="123456789012", region="eu-west-2")
         rag_stack = TeachingAgentRAGStack(app, "TeachingAgentRAG", env=env)
         template = Template.from_stack(rag_stack)
 
@@ -744,7 +744,7 @@ class TestPreservationRagMaterialsBucket:
         """enforce_ssl emits a bucket policy denying insecure (non-TLS) transport."""
         _stub_local_bundling(monkeypatch)
         app = cdk.App()
-        env = cdk.Environment(account="062788795053", region="eu-west-2")
+        env = cdk.Environment(account="123456789012", region="eu-west-2")
         rag_stack = TeachingAgentRAGStack(app, "TeachingAgentRAG", env=env)
         template = Template.from_stack(rag_stack)
 

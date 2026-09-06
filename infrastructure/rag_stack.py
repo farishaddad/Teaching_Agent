@@ -24,7 +24,8 @@ class TeachingAgentRAGStack(Stack):
         self.materials_bucket = s3.Bucket(
             self,
             "CourseMaterials",
-            bucket_name=f"teaching-agent-materials-062788795053",
+            # Account-scoped name for global S3 uniqueness (resolved at deploy).
+            bucket_name=f"teaching-agent-materials-{self.account}",
             versioned=True,
             encryption=s3.BucketEncryption.S3_MANAGED,
             enforce_ssl=True,

@@ -142,7 +142,7 @@ aws s3 sync dist/ s3://teaching-agent-frontend-<account>/ --delete
 aws cloudfront create-invalidation --distribution-id <DIST_ID> --paths "/*"
 ```
 
-The distribution serves `/*` from S3 (SPA; unknown paths fall back to `/index.html`) and routes `/api/*` to the API Gateway origin at path `/prod` — same origin, so cookies work with no CORS. The public URL is the distribution domain, e.g. **https://d32yz1ssnunfr5.cloudfront.net**.
+The distribution serves `/*` from S3 (SPA; unknown paths fall back to `/index.html`) and routes `/api/*` to the API Gateway origin at path `/prod` — same origin, so cookies work with no CORS. The public URL is the distribution domain, e.g. **https://&lt;distribution-id&gt;.cloudfront.net**.
 
 > **Build-time env:** `frontend/.env.production` sets `VITE_API_URL=` (empty → relative `/api` via the proxy) and `VITE_COGNITO_REDIRECT_URI=https://<cloudfront-domain>/auth/callback`.
 

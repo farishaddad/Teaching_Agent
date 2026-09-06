@@ -63,6 +63,7 @@ cdk deploy TeachingAgentAPI
 # 4) Build + deploy the frontend to CloudFront
 cd ../frontend && npm run build && cd ../infrastructure
 cdk deploy TeachingAgentFrontend      # publishes frontend/dist + invalidates CloudFront
+
 ```
 
 Local development (optional):
@@ -73,6 +74,7 @@ uvicorn backend.main:app --reload --port 8000
 
 # Frontend dev server (proxies /api to the deployed API)
 cd frontend && npm run dev
+
 ```
 
 > The deployed app is served from the CloudFront distribution URL (e.g. `https://<id>.cloudfront.net`) — see Chapter 6.
@@ -92,3 +94,4 @@ After completing this tutorial, you will be able to:
 ---
 
 > 💡 **Meta-learning**: You're learning about AI agents by studying the AI agent that's teaching you — right down to the CloudFront distribution serving this page. This is Agentic AI in action!
+

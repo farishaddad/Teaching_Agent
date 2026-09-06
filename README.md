@@ -32,6 +32,10 @@ An AI-powered student guide for the **Introduction to Agentic AI** course. Built
 - AWS Account with Bedrock access (eu-west-2)
 - Python 3.12+, Node.js 18+
 - AWS CDK CLI
+- **Your AWS CLI/profile region must be `eu-west-2`** (all resources live there, and
+  CDK's synth-time SSM lookup resolves in your CLI region). Set it with
+  `export AWS_REGION=eu-west-2` or in your profile, or pass `-c region=eu-west-2`.
+  The account is taken from your credentials (`CDK_DEFAULT_ACCOUNT`) or `-c account=<id>`.
 
 ### Deploy
 ```bash
@@ -126,4 +130,7 @@ Teaching_Agent/
 
 ## 📄 License
 
-Internal — for course participants only.
+TODO: choose a license before publishing. If this repository is made public,
+add a `LICENSE` file (e.g. MIT or Apache-2.0 for open source, or an explicit
+proprietary notice). Note that **course materials are not included** in this
+repository — see `course_materials/README.md`.

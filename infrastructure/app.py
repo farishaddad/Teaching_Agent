@@ -21,10 +21,21 @@ app = cdk.App()
 # SSM ``value_from_lookup`` below) can resolve. The CDK CLI populates
 # ``CDK_DEFAULT_ACCOUNT`` from the active credentials during synth/deploy; fall
 # back to the project account when running outside the CLI.
-env = cdk.Environment(
-    account=os.environ.get("CDK_DEFAULT_ACCOUNT") or "062788795053",
-    region="eu-west-2",
+_account = (
+    os.environ.get("CDK_DEFAULT_ACCOUNT")
+    or app.node.try_get_context("account")
 )
+if not _account:
+    raise SystemExit(
+        "No AWS account resolved. Run via the CDK CLI (which sets "
+        "CDK_DEFAULT_ACCOUNT from your credentials) or pass -c account=<id>."
+    )
+# Region is fixed to eu-west-2 (all resources — Bedrock, KB, Cognito — live
+# there). Your AWS CLI/profile region MUST also be eu-west-2 so synth-time
+# context lookups (the SSM ``value_from_lookup`` below) resolve in the right
+# region. Override only if you are re-homing the whole stack.
+_region = app.node.try_get_context("region") or "eu-west-2"
+env = cdk.Environment(account=_account, region=_region)
 
 # Per-environment SSM parameter name for the Bedrock Knowledge Base ID. The
 # same app deploys to dev/prod by selecting the environment via CDK context
@@ -32,20 +43,18 @@ env = cdk.Environment(
 deploy_env = app.node.try_get_context("env") or "dev"
 kb_id_param_name = f"/teaching-agent/{deploy_env}/bedrock-kb-id"
 
-# Public frontend origin (CloudFront). Overridable via CDK context
-# (``-c frontend_domain=<host>``) so the value isn't hardcoded across stacks and
-# survives a CloudFront distribution being recreated. Defaults to the current
-# deployed distribution. Used for Cognito callback/logout URLs and API CORS.
-frontend_domain = (
-    app.node.try_get_context("frontend_domain") or "d32yz1ssnunfr5.cloudfront.net"
-)
-frontend_origin = f"https://{frontend_domain}"
+# Public frontend origin (CloudFront). Set via CDK context
+# (``-c frontend_domain=<host>``) once the CloudFront distribution exists — used
+# for Cognito callback/logout URLs and API CORS. Empty on a first deploy (before
+# the distribution is created); populate it and redeploy the Auth + API stacks.
+frontend_domain = app.node.try_get_context("frontend_domain") or ""
+frontend_origin = f"https://{frontend_domain}" if frontend_domain else ""
 
 # SES sender for Cognito emails (verification / reset codes). Overridable via
 # CDK context (``-c ses_sender_email=no-reply@yourdomain.com``). Must be a
 # verified SES identity in the deployment region; empty falls back to the
 # Cognito default sender (poor deliverability to consumer inboxes).
-ses_sender_email = app.node.try_get_context("ses_sender_email") or "fahaddad@amazon.co.uk"
+ses_sender_email = app.node.try_get_context("ses_sender_email") or ""
 
 # Stack 1: Authentication (Cognito)
 auth_stack = TeachingAgentAuthStack(

@@ -22,7 +22,7 @@ Tests are CDK synthesis assertions (`aws_cdk.assertions`) and template snapshots
   - In `tests/test_kb_id_config.py`, synthesize `TeachingAgentAPI` and the sibling stacks (`TeachingAgentAuth`, `TeachingAgentGuardrails`, `TeachingAgentTracking`, `TeachingAgentRAG`) on unfixed source and capture their template JSON.
   - Observe and assert the six other API Lambda env vars are present with their current values: `COGNITO_USER_POOL_ID`, `COGNITO_REGION`, `BEDROCK_GUARDRAIL_ID`, `BEDROCK_GUARDRAIL_VERSION`, `TRACKING_TABLE_NAME`, `TUTORIAL_DIR` (Req 3.3).
   - Observe and assert the API Lambda IAM policy statements (Bedrock `InvokeModel`/`Converse`/`Retrieve`/`RetrieveAndGenerate`/`ApplyGuardrail`, DynamoDB read/write, Cognito admin) are present (Req 3.6).
-  - Observe and assert the `TeachingAgentRAG` S3 materials bucket `teaching-agent-materials-062788795053` with versioning, S3-managed encryption, SSL enforcement, and RETAIN removal policy (Req 3.4).
+  - Observe and assert the `TeachingAgentRAG` S3 materials bucket `teaching-agent-materials-123456789012` with versioning, S3-managed encryption, SSL enforcement, and RETAIN removal policy (Req 3.4).
   - Snapshot the `TeachingAgentAuth`, `TeachingAgentGuardrails`, `TeachingAgentTracking` templates for later equality comparison (Req 3.5).
   - Assert `backend/rag/knowledge_base.py` is unmodified — capture a content hash/baseline so a later diff can prove the runtime resolver precedence and graceful fallback are untouched (Req 3.1, 3.2).
   - Run on UNFIXED code.
@@ -99,10 +99,10 @@ Tests are CDK synthesis assertions (`aws_cdk.assertions`) and template snapshots
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.7, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
 - [~] 5. Manual AWS verification (NOT auto-runnable — requires live AWS)
-  - **MANUAL EXECUTION REQUIRED** against AWS: profile `kiro-demo`, account `062788795053`, region `eu-west-2`. This task cannot be run by the automated test suite.
-  - Seed the parameter: `aws ssm put-parameter --name "/teaching-agent/dev/bedrock-kb-id" --type String --value "JUZEF2UAU0" --overwrite --region eu-west-2 --profile kiro-demo`.
+  - **MANUAL EXECUTION REQUIRED** against AWS: profile `<aws-profile>`, account `123456789012`, region `eu-west-2`. This task cannot be run by the automated test suite.
+  - Seed the parameter: `aws ssm put-parameter --name "/teaching-agent/dev/bedrock-kb-id" --type String --value "JUZEF2UAU0" --overwrite --region eu-west-2 --profile <aws-profile>`.
   - Run `cdk diff TeachingAgentAPI` and confirm `BEDROCK_KB_ID` shows the real KB ID `JUZEF2UAU0` (a literal, not a `{{resolve:ssm:...}}` token).
-  - Run `cdk deploy TeachingAgentAPI --profile kiro-demo`.
-  - Run `aws cloudformation detect-stack-drift --stack-name TeachingAgentAPI --region eu-west-2 --profile kiro-demo` and confirm the resulting drift status is `IN_SYNC` (Property 1 drift elimination, Req 2.3).
+  - Run `cdk deploy TeachingAgentAPI --profile <aws-profile>`.
+  - Run `aws cloudformation detect-stack-drift --stack-name TeachingAgentAPI --region eu-west-2 --profile <aws-profile>` and confirm the resulting drift status is `IN_SYNC` (Property 1 drift elimination, Req 2.3).
   - Optionally confirm a RAG endpoint returns a successful retrieval against the real KB.
   - _Requirements: 2.1, 2.2, 2.3_

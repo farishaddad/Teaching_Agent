@@ -56,7 +56,7 @@ END FUNCTION
 - RAG retrieval (`Retrieve` / `RetrieveAndGenerate`) must continue to work exactly as today when a valid KB ID is configured (Req 3.1).
 - The runtime KB ID resolution precedence (`BEDROCK_KB_ID` then fallback to `BEDROCK_KNOWLEDGE_BASE_ID`) and its graceful fallback (log `knowledge_base_id_not_configured`, return safe/empty result) must remain unchanged (Req 3.2).
 - All other API Lambda environment variables must be set unchanged: `COGNITO_USER_POOL_ID`, `COGNITO_REGION`, `BEDROCK_GUARDRAIL_ID`, `BEDROCK_GUARDRAIL_VERSION`, `TRACKING_TABLE_NAME`, `TUTORIAL_DIR` (Req 3.3).
-- The `TeachingAgentRAG` stack must continue to create and retain the `teaching-agent-materials-062788795053` S3 bucket with existing versioning, S3-managed encryption, SSL enforcement, and RETAIN removal policy (Req 3.4).
+- The `TeachingAgentRAG` stack must continue to create and retain the `teaching-agent-materials-123456789012` S3 bucket with existing versioning, S3-managed encryption, SSL enforcement, and RETAIN removal policy (Req 3.4).
 - `TeachingAgentAuth`, `TeachingAgentGuardrails`, `TeachingAgentTracking` and their cross-stack references (user pool, guardrail ID, tracking table) must remain unchanged (Req 3.5).
 - The API Lambda's IAM policies — Bedrock (`InvokeModel`, `Converse`, `Retrieve`, `RetrieveAndGenerate`, `ApplyGuardrail`), DynamoDB read/write, and Cognito admin — must remain unchanged (Req 3.6).
 

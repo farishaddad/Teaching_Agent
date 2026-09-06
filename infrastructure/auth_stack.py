@@ -25,7 +25,7 @@ class TeachingAgentAuthStack(Stack):
         scope: Construct,
         construct_id: str,
         *,
-        frontend_origin: str = "https://d32yz1ssnunfr5.cloudfront.net",
+        frontend_origin: str = "",
         ses_sender_email: str = "",
         **kwargs,
     ) -> None:

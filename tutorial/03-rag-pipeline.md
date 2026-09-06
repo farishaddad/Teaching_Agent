@@ -97,7 +97,7 @@ class TeachingAgentRAGStack(Stack):
         # S3 bucket for course materials (account-suffixed for global uniqueness)
         self.materials_bucket = s3.Bucket(
             self, "CourseMaterials",
-            bucket_name="teaching-agent-materials-062788795053",
+            bucket_name="teaching-agent-materials-123456789012",
             versioned=True,
             encryption=s3.BucketEncryption.S3_MANAGED,
             enforce_ssl=True,
