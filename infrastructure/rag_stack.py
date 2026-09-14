@@ -17,8 +17,38 @@ from constructs import Construct
 class TeachingAgentRAGStack(Stack):
     """S3 bucket for course materials ingestion."""
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        frontend_origin: str = "",
+        **kwargs,
+    ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # CORS: the admin "Course Materials" panel uploads files by PUTting them
+        # directly to S3 via presigned URLs. Browsers require the bucket to allow
+        # the frontend origin for cross-origin PUT/GET, or the upload silently
+        # fails. Scope to the known frontend origin when provided; otherwise omit
+        # CORS (set frontend_origin via CDK context on deploy).
+        cors_rules = (
+            [
+                s3.CorsRule(
+                    allowed_origins=[frontend_origin],
+                    allowed_methods=[
+                        s3.HttpMethods.PUT,
+                        s3.HttpMethods.GET,
+                        s3.HttpMethods.HEAD,
+                    ],
+                    allowed_headers=["*"],
+                    exposed_headers=["ETag"],
+                    max_age=3000,
+                )
+            ]
+            if frontend_origin
+            else []
+        )
 
         # S3 bucket for course materials (PDFs, markdown, docs)
         self.materials_bucket = s3.Bucket(
@@ -29,6 +59,7 @@ class TeachingAgentRAGStack(Stack):
             versioned=True,
             encryption=s3.BucketEncryption.S3_MANAGED,
             enforce_ssl=True,
+            cors=cors_rules,
             removal_policy=RemovalPolicy.RETAIN,
             auto_delete_objects=False,
         )

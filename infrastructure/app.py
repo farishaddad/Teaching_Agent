@@ -66,7 +66,9 @@ auth_stack = TeachingAgentAuthStack(
 )
 
 # Stack 2: RAG (S3 bucket for course materials — KB created via console)
-rag_stack = TeachingAgentRAGStack(app, "TeachingAgentRAG", env=env)
+rag_stack = TeachingAgentRAGStack(
+    app, "TeachingAgentRAG", env=env, frontend_origin=frontend_origin
+)
 
 # Stack 3: Guardrails (Bedrock Guardrail)
 guardrails_stack = TeachingAgentGuardrailsStack(app, "TeachingAgentGuardrails", env=env)
