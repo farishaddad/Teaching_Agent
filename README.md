@@ -42,8 +42,21 @@ An AI-powered student guide for the **Introduction to Agentic AI** course. Built
 cd infrastructure
 pip install -r requirements.txt
 cdk bootstrap
-cdk deploy --all
+# Pass your public frontend host once the CloudFront distribution exists.
+cdk deploy --all -c frontend_domain=<distribution-id>.cloudfront.net
 ```
+
+> **`frontend_domain` matters.** It has no default — several resources are
+> configured from it, and they come out blank/broken if it's omitted:
+> - the **materials S3 bucket CORS** rule (browser presigned uploads in the
+>   admin Course Materials panel fail without it),
+> - the **Cognito** hosted-UI callback/logout URLs, and
+> - the API **CORS** allowed origin.
+>
+> On the very first deploy the distribution doesn't exist yet, so deploy once
+> without it, then redeploy the `TeachingAgentRAG`, `TeachingAgentAuth`, and
+> `TeachingAgentAPI` stacks with `-c frontend_domain=<host>` once you know the
+> CloudFront domain. Pass the same flag on every subsequent deploy.
 
 ### 🧠 Knowledge Base setup
 
