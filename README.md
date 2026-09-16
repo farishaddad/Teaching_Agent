@@ -143,7 +143,8 @@ Teaching_Agent/
 
 ## 📄 License
 
-TODO: choose a license before publishing. If this repository is made public,
-add a `LICENSE` file (e.g. MIT or Apache-2.0 for open source, or an explicit
-proprietary notice). Note that **course materials are not included** in this
-repository — see `course_materials/README.md`.
+Released under the [MIT License](./LICENSE).
+
+Note that **course materials are not included** in this repository — the code
+and infrastructure are open source, but the course content itself is private.
+See `course_materials/README.md`.
