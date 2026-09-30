@@ -101,6 +101,7 @@ api_stack = TeachingAgentAPIStack(
     cognito_domain=auth_stack.domain.base_url(),
     knowledge_base_id=resolved_kb_id,
     guardrail_id=guardrails_stack.guardrail_id,
+    guardrail_version=guardrails_stack.guardrail_version.attr_version,
     tracking_table=tracking_stack.table,
     materials_bucket=rag_stack.materials_bucket,
     frontend_origin=frontend_origin,

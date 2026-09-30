@@ -28,6 +28,7 @@ import structlog
 from botocore.exceptions import BotoCoreError, ClientError
 
 from backend.guardrails.config import GUARDRAIL_ID, GUARDRAIL_VERSION, POLICY
+from backend.guardrails.middleware import check_input
 from backend.rag.knowledge_base import (
     BEDROCK_REGION,
     MODEL_ARN,
@@ -144,6 +145,35 @@ async def handle_chat(
     log.info("rag_retrieve_start")
 
     try:
+        # Step 0: Pre-flight guardrail check on the raw input BEFORE hitting the
+        # KB or LLM.  This avoids wasted retrieval + token costs for off-topic
+        # or policy-violating queries.  Fails OPEN: if the guardrail API is
+        # unavailable, we log and continue to the normal RAG flow rather than
+        # hard-erroring the endpoint.
+        try:
+            preflight = await check_input(text=query, student_id=student_id)
+            if not preflight.allowed:
+                log.info(
+                    "chat_input_blocked_preflight",
+                    violation_type=preflight.violation_type,
+                    student_id=student_id,
+                )
+                return {
+                    "answer": preflight.message or POLICY.denial_message,
+                    "sources": [],
+                    "session_id": session_id,
+                    "tokens_used": {"input": 0, "output": 0, "total": 0},
+                    "guardrail_triggered": True,
+                    "violation_type": preflight.violation_type,
+                }
+        except Exception as preflight_err:  # noqa: BLE001
+            # Fail open — guardrail API hiccup must not take down chat
+            log.error(
+                "chat_input_preflight_error",
+                error=str(preflight_err),
+                student_id=student_id,
+            )
+
         # Step 1: Retrieve from the Managed KB.
         kb_chunks = await asyncio.get_event_loop().run_in_executor(
             None, retrieve, query, student_id

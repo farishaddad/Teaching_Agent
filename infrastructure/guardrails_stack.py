@@ -72,6 +72,20 @@ class TeachingAgentGuardrailsStack(Stack):
                         definition="Casual conversation unrelated to AI, requests for jokes, stories, creative writing, entertainment, sports, food recommendations",
                         type="DENY",
                     ),
+                    bedrock.CfnGuardrail.TopicConfigProperty(
+                        name="OffTopicGeneralKnowledge",
+                        definition=(
+                            "Real-world facts, news, weather, geography, cooking, travel, "
+                            "sports results, or any subject outside the Agentic AI course "
+                            "curriculum on AI agents, LLMs, RAG, and prompt engineering."
+                        ),
+                        examples=[
+                            "What is the weather in London today?",
+                            "Who won the football match last night?",
+                            "What is the capital of France?",
+                        ],
+                        type="DENY",
+                    ),
                 ],
             ),
             # ─── Content Filter Policy ────────────────────────────────
@@ -157,7 +171,7 @@ class TeachingAgentGuardrailsStack(Stack):
             self,
             "TeachingAgentGuardrailVersion",
             guardrail_identifier=self.guardrail.attr_guardrail_id,
-            description="Production v1 — topic denial, content filters, PII, word policy, grounding",
+            description="Production v2 — added OffTopicGeneralKnowledge denied topic",
         )
         self.guardrail_version.add_dependency(self.guardrail)
 

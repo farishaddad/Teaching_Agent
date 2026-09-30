@@ -89,6 +89,7 @@ class TeachingAgentAPIStack(Stack):
         cognito_domain,
         knowledge_base_id: str,
         guardrail_id: str,
+        guardrail_version: str,
         tracking_table,
         materials_bucket=None,
         frontend_origin: str = "",
@@ -198,7 +199,7 @@ class TeachingAgentAPIStack(Stack):
                 "COGNITO_DOMAIN": cognito_domain,
                 "BEDROCK_KB_ID": knowledge_base_id,
                 "BEDROCK_GUARDRAIL_ID": guardrail_id,
-                "BEDROCK_GUARDRAIL_VERSION": "1",
+                "BEDROCK_GUARDRAIL_VERSION": guardrail_version,
                 # Generation model for chat. Must be an ACTIVE model; older
                 # Claude 3.x models are now Legacy and return
                 # ResourceNotFoundException on Converse. eu-west-2 requires a
