@@ -1,6 +1,8 @@
 """Student Management — Cognito operations for creating/managing student accounts."""
 
 import os
+import secrets
+import string
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -14,42 +16,91 @@ logger = structlog.get_logger()
 COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")
 REGION = os.environ.get("COGNITO_REGION", "eu-west-2")
 
+# Cognito group all students belong to (used for authorization in the app).
+STUDENTS_GROUP = "students"
+
 cognito_client = boto3.client("cognito-idp", region_name=REGION)
+
+
+def _generate_temp_password() -> str:
+    """Generate a temporary password that satisfies the Cognito pool policy.
+
+    The pool requires >= 10 chars with upper, lower, number, and symbol. We
+    build 12 random alphanumerics for entropy and append one guaranteed
+    character from each required class.
+    """
+    alphabet = string.ascii_letters + string.digits
+    base = "".join(secrets.choice(alphabet) for _ in range(12))
+    # Guarantee one of each required character class.
+    return base + "A" + "a" + "1" + "!"
 
 
 async def create_student(student: StudentCreate) -> StudentProfile:
     """Create a new student in Cognito and return their profile.
 
-    Creates the user with a temporary password (forces change on first login)
-    or lets Cognito send an invite email with a generated password.
-    """
-    logger.info("creating_student", email=student.email, cohort=student.cohort)
+    Two invitation modes:
+    - ``send_email=True`` (default): Cognito emails the student an invitation
+      with a temporary password. Requires SES to be able to reach the address.
+    - ``send_email=False``: no email is sent (``MessageAction=SUPPRESS``); a
+      temporary password is generated (or the provided one used) and returned
+      in the profile so the instructor can share it out of band. Use this while
+      SES is in sandbox mode.
 
+    Either way the account is created with ``FORCE_CHANGE_PASSWORD`` status, so
+    the student must set their own password on first login, and is added to the
+    ``students`` group.
+    """
+    logger.info(
+        "creating_student",
+        email=student.email,
+        cohort=student.cohort,
+        send_email=student.send_email,
+    )
+
+    enrollment_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     user_attributes = [
         {"Name": "email", "Value": student.email},
         {"Name": "email_verified", "Value": "true"},
         {"Name": "given_name", "Value": student.first_name},
         {"Name": "family_name", "Value": student.last_name},
         {"Name": "custom:cohort", "Value": student.cohort},
-        {"Name": "custom:enrollment_date", "Value": datetime.now(timezone.utc).strftime("%Y-%m-%d")},
+        {"Name": "custom:enrollment_date", "Value": enrollment_date},
     ]
 
     create_params = {
         "UserPoolId": COGNITO_USER_POOL_ID,
         "Username": student.email,
         "UserAttributes": user_attributes,
-        "DesiredDeliveryMediums": ["EMAIL"],
     }
 
-    if student.temporary_password:
-        create_params["TemporaryPassword"] = student.temporary_password
-        create_params["MessageAction"] = "SUPPRESS"  # Don't send invite if manual password
+    # Track the temp password to return only when we're NOT emailing it.
+    returned_temp_password: Optional[str] = None
+
+    if student.send_email:
+        # Cognito generates (or uses the given) password and emails the invite.
+        create_params["DesiredDeliveryMediums"] = ["EMAIL"]
+        if student.temporary_password:
+            create_params["TemporaryPassword"] = student.temporary_password
     else:
-        # Cognito sends an invitation email with temp password
-        pass
+        # No email: suppress the invite and hand the password back to the caller.
+        temp_password = student.temporary_password or _generate_temp_password()
+        create_params["TemporaryPassword"] = temp_password
+        create_params["MessageAction"] = "SUPPRESS"
+        returned_temp_password = temp_password
 
     response = cognito_client.admin_create_user(**create_params)
     user = response["User"]
+
+    # Add the student to the 'students' group so app authorization treats them
+    # correctly (previously omitted).
+    try:
+        cognito_client.admin_add_user_to_group(
+            UserPoolId=COGNITO_USER_POOL_ID,
+            Username=student.email,
+            GroupName=STUDENTS_GROUP,
+        )
+    except Exception as exc:  # noqa: BLE001 — don't fail creation if group add fails
+        logger.error("student_group_add_failed", email=student.email, error=str(exc))
 
     logger.info("student_created", username=user["Username"], sub=_get_attr(user, "sub"))
 
@@ -59,8 +110,10 @@ async def create_student(student: StudentCreate) -> StudentProfile:
         first_name=student.first_name,
         last_name=student.last_name,
         cohort=student.cohort,
-        enrollment_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        enrollment_date=enrollment_date,
         enabled=user.get("Enabled", True),
+        temporary_password=returned_temp_password,
+        email_sent=student.send_email,
     )
 
 

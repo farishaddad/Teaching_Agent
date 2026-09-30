@@ -48,12 +48,27 @@ export function listStudents(cohort?: string) {
   return adminFetch(`/students${params}`);
 }
 
+export interface CreatedStudent {
+  student_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  cohort: string;
+  enrollment_date: string;
+  enabled: boolean;
+  // Present only when created with send_email=false — the temp password to
+  // share with the student out of band. Null when an invite email was sent.
+  temporary_password?: string | null;
+  email_sent: boolean;
+}
+
 export function createStudent(data: {
   email: string;
   first_name: string;
   last_name: string;
   cohort: string;
-}) {
+  send_email?: boolean;
+}): Promise<CreatedStudent> {
   return adminFetch('/students', {
     method: 'POST',
     body: JSON.stringify(data),

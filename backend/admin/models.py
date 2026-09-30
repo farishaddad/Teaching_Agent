@@ -18,7 +18,16 @@ class StudentCreate(BaseModel):
     temporary_password: Optional[str] = Field(
         None,
         min_length=8,
-        description="If omitted, Cognito generates one and emails the student",
+        description="If omitted, one is generated (or Cognito emails one when send_email=True)",
+    )
+    send_email: bool = Field(
+        True,
+        description=(
+            "When True (default), Cognito emails the student an invitation with a "
+            "temporary password. When False, no email is sent and the generated "
+            "temporary password is returned in the response so the instructor can "
+            "share it out of band (use this while SES is in sandbox mode)."
+        ),
     )
 
 
@@ -44,6 +53,10 @@ class StudentProfile(BaseModel):
     last_login: Optional[str] = None
     total_interactions: int = 0
     total_tokens_used: int = 0
+    # Populated only on creation when send_email=False, so the instructor can
+    # copy the temporary password and share it out of band. Null otherwise.
+    temporary_password: Optional[str] = None
+    email_sent: bool = True
 
 
 class StudentBulkCreate(BaseModel):
